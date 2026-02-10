@@ -423,3 +423,140 @@ def list_globals(
         }
     except Exception as e:
         return {"data": [], "offset": offset, "count": 0, "total": 0, "more": False, "error": str(e)}
+
+
+@register_tool
+def list_plt_stubs(
+    filter: Annotated[str, "Glob 模式过滤 PLT stub 名称"] = "",
+    offset: Annotated[int, "分页偏移量"] = 0,
+    count: Annotated[int, "返回结果数量"] = 50,
+) -> dict:
+    """List PLT (Procedure Linkage Table) stubs and external function references"""
+    try:
+        import fnmatch
+
+        import ida_segment
+        import idaapi
+        import idautils
+
+        plt_stubs = []
+        skipped = 0
+        total = 0
+
+        # 遍历所有命名地址，查找 PLT stubs 和外部引用
+        for addr, name in idautils.Names():
+            # 检查是否在 PLT 段或标记为外部
+            seg = ida_segment.getseg(addr)
+            seg_name = ida_segment.get_segm_name(seg) if seg else ""
+
+            # 判断是否为 PLT stub 或外部引用
+            is_plt = seg_name in [".plt", ".plt.got", ".plt.sec"]
+
+            # 检查是否为导入函数（不是常规函数）
+            func = idaapi.get_func(addr)
+            is_import_stub = func and (func.flags & idaapi.FUNC_THUNK) != 0
+            is_extern = is_import_stub or name.startswith(".")
+
+            if not (is_plt or is_extern or is_import_stub):
+                continue
+
+            if filter and not fnmatch.fnmatch(name, filter):
+                continue
+
+            total += 1
+            if skipped < offset:
+                skipped += 1
+                continue
+            if len(plt_stubs) >= count:
+                continue
+
+            # 获取函数类型信息
+            func_type = "unknown"
+            if is_plt:
+                func_type = "plt"
+            elif is_import_stub:
+                func_type = "thunk"
+            elif is_extern:
+                func_type = "extern"
+
+            plt_stubs.append({
+                "addr": hex(addr),
+                "name": name,
+                "segment": seg_name,
+                "type": func_type,
+            })
+
+        return {
+            "data": plt_stubs,
+            "offset": offset,
+            "count": len(plt_stubs),
+            "total": total,
+            "more": offset + len(plt_stubs) < total,
+        }
+    except Exception as e:
+        return {"data": [], "offset": offset, "count": 0, "total": 0, "more": False, "error": str(e)}
+
+
+@register_tool
+def list_all_names(
+    filter: Annotated[str, "Glob 模式过滤符号名称"] = "",
+    offset: Annotated[int, "分页偏移量"] = 0,
+    count: Annotated[int, "返回结果数量"] = 50,
+) -> dict:
+    """List all named addresses including functions, PLT stubs, globals, and imports"""
+    try:
+        import fnmatch
+
+        import ida_segment
+        import idaapi
+        import idautils
+
+        all_names = []
+        skipped = 0
+        total = 0
+
+        for addr, name in idautils.Names():
+            if name is None:
+                continue
+            if filter and not fnmatch.fnmatch(name, filter):
+                continue
+
+            total += 1
+            if skipped < offset:
+                skipped += 1
+                continue
+            if len(all_names) >= count:
+                continue
+
+            # 确定符号类型
+            func = idaapi.get_func(addr)
+            seg = ida_segment.getseg(addr)
+            seg_name = ida_segment.get_segm_name(seg) if seg else ""
+
+            sym_type = "data"
+            if func:
+                if func.flags & idaapi.FUNC_THUNK:
+                    sym_type = "thunk"
+                else:
+                    sym_type = "function"
+            elif seg_name in [".plt", ".plt.got", ".plt.sec"]:
+                sym_type = "plt"
+            elif name.startswith("."):
+                sym_type = "extern"
+
+            all_names.append({
+                "addr": hex(addr),
+                "name": name,
+                "segment": seg_name,
+                "type": sym_type,
+            })
+
+        return {
+            "data": all_names,
+            "offset": offset,
+            "count": len(all_names),
+            "total": total,
+            "more": offset + len(all_names) < total,
+        }
+    except Exception as e:
+        return {"data": [], "offset": offset, "count": 0, "total": 0, "more": False, "error": str(e)}

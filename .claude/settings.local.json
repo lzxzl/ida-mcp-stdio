@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "mcp__ida-mcp-stdio__list_plt_stubs"
+    ]
+  }
+}
