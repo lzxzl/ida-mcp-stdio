@@ -51,7 +51,11 @@ def get_bytes(
         ea = parse_address(addr)
         data = ida_bytes.get_bytes(ea, size)
         if not data:
-            return {"addr": addr, "data": None, "error": f"Failed to read {size} bytes at {addr}"}
+            return {
+                "addr": addr,
+                "data": None,
+                "error": f"Failed to read {size} bytes at {addr}",
+            }
 
         hex_str = " ".join(f"{b:02x}" for b in data)
         return {"addr": addr, "size": size, "data": hex_str, "error": None}
@@ -62,7 +66,9 @@ def get_bytes(
 @register_tool
 def get_int(
     addr: Annotated[str, "读取地址"],
-    ty: Annotated[str, "整数类型（i8/u8/i16le/i16be/i32le/i32be/i64le/i64be/u16le 等）"],
+    ty: Annotated[
+        str, "整数类型（i8/u8/i16le/i16be/i32le/i32be/i64le/i64be/u16le 等）"
+    ],
 ) -> dict:
     """Read an integer value from memory with specified type format"""
     try:
@@ -74,7 +80,12 @@ def get_int(
         data = ida_bytes.get_bytes(ea, size)
 
         if not data or len(data) != size:
-            return {"addr": addr, "ty": ty, "value": None, "error": f"Failed to read {size} bytes at {addr}"}
+            return {
+                "addr": addr,
+                "ty": ty,
+                "value": None,
+                "error": f"Failed to read {size} bytes at {addr}",
+            }
 
         value = int.from_bytes(data, byte_order, signed=signed)
         return {"addr": addr, "ty": normalized, "value": value, "error": None}
@@ -97,7 +108,9 @@ def get_string(
             ea = parse_address(addr)
             raw = idaapi.get_strlit_contents(ea, -1, 0)
             if not raw:
-                results.append({"addr": addr, "value": None, "error": "No string at address"})
+                results.append(
+                    {"addr": addr, "value": None, "error": "No string at address"}
+                )
                 continue
             value = raw.decode("utf-8", errors="replace")
             results.append({"addr": addr, "value": value, "error": None})
@@ -125,7 +138,11 @@ def get_segment_bytes(
         size = min(seg.size(), max_size)
         data = ida_bytes.get_bytes(seg.start_ea, size)
         if not data:
-            return {"name": name, "data": None, "error": f"Failed to read segment '{name}'"}
+            return {
+                "name": name,
+                "data": None,
+                "error": f"Failed to read segment '{name}'",
+            }
 
         hex_str = " ".join(f"{b:02x}" for b in data)
         return {

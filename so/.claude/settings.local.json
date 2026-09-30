@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "mcp__ida-mcp-stdio__imports",
-      "mcp__ida-mcp-stdio__list_funcs"
-    ]
-  }
-}

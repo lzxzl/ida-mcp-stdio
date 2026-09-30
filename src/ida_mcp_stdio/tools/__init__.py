@@ -3,7 +3,17 @@
 from __future__ import annotations
 
 import inspect
-from typing import Annotated, Any, Callable, Optional, get_args, get_origin, get_type_hints
+import types as python_types
+from collections.abc import Callable
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 
 class ToolDefinition:
@@ -22,17 +32,29 @@ class ToolDefinition:
         self.description = description
         self.parameters = parameters
         self.required = required
+        self.signature = inspect.signature(func)
+        self.annotations = {
+            "readOnlyHint": name
+            not in {
+                "open_database",
+                "close_database",
+                "save_database",
+                "execute_python",
+            },
+            "destructiveHint": name in {"open_database", "execute_python"},
+            "openWorldHint": name == "execute_python",
+        }
 
     @classmethod
     def from_function(cls, func: Callable) -> ToolDefinition:
         """Create a ToolDefinition from a function's signature and annotations."""
         name = func.__name__
-        description = (func.__doc__ or "No description").strip().split("\n")[0]
+        description = inspect.cleandoc(func.__doc__ or "No description")
 
         sig = inspect.signature(func)
         try:
             hints = get_type_hints(func, include_extras=True)
-        except Exception:
+        except (NameError, TypeError, ValueError):
             hints = {}
 
         parameters: dict[str, dict] = {}
@@ -44,6 +66,8 @@ class ToolDefinition:
 
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)
+            else:
+                param_schema["default"] = param.default
 
             parameters[param_name] = param_schema
 
@@ -56,7 +80,18 @@ class ToolDefinition:
             "type": "object",
             "properties": self.parameters,
             "required": self.required,
+            "additionalProperties": False,
         }
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> None:
+        """Reject invalid bindings and schema values before invoking a tool."""
+        try:
+            self.signature.bind(**arguments)
+        except TypeError as error:
+            raise ValueError(str(error)) from error
+        for name, value in arguments.items():
+            if not _matches_schema(value, self.parameters[name]):
+                raise ValueError(f"Invalid value for '{name}': {value!r}")
 
 
 class ToolsRegistry:
@@ -71,7 +106,7 @@ class ToolsRegistry:
         self._tools[tool_def.name] = tool_def
         return func
 
-    def get_tool(self, name: str) -> Optional[ToolDefinition]:
+    def get_tool(self, name: str) -> ToolDefinition | None:
         """Get a tool by name."""
         return self._tools.get(name)
 
@@ -84,6 +119,7 @@ class ToolsRegistry:
         tool_def = self._tools.get(name)
         if tool_def is None:
             raise KeyError(f"Tool not found: {name}")
+        tool_def.validate_arguments(arguments or {})
         return tool_def.func(**(arguments or {}))
 
 
@@ -129,9 +165,18 @@ def _type_to_schema(hint: Any, param_name: str) -> dict:
         hint = args[0]
         origin = get_origin(hint)
 
-    # Handle Optional[T] -> T with nullable note
-    if origin is Optional or (origin is type(int | str) if hasattr(type(int | str), '__mro__') else False):
-        pass  # keep as-is for now
+    if origin in (Union, python_types.UnionType):
+        return {
+            "anyOf": [_type_to_schema(arg, param_name) for arg in get_args(hint)],
+            "description": description,
+        }
+    if origin is Literal:
+        values = list(get_args(hint))
+        return {"enum": values, "description": description}
+    if hint is type(None):
+        return {"type": "null", "description": description}
+    if hint is Any:
+        return {"description": description}
 
     # Handle basic types
     if isinstance(hint, type):
@@ -150,16 +195,24 @@ def _type_to_schema(hint: Any, param_name: str) -> dict:
     if origin is dict:
         return {"type": "object", "description": description}
 
-    # Handle Union types (e.g., str | int)
-    try:
-        import types
-        if isinstance(hint, types.UnionType):
-            # For union types, use the first non-None type
-            union_args = get_args(hint)
-            for arg in union_args:
-                if arg is not type(None):
-                    return _type_to_schema(arg, param_name)
-    except (AttributeError, TypeError):
-        pass
-
     return {"type": "string", "description": description}
+
+
+def _matches_schema(value: Any, schema: dict) -> bool:
+    if "anyOf" in schema:
+        return any(_matches_schema(value, item) for item in schema["anyOf"])
+    if "enum" in schema:
+        return value in schema["enum"]
+    kind = schema.get("type")
+    checks = {
+        "string": lambda: isinstance(value, str),
+        "integer": lambda: isinstance(value, int) and not isinstance(value, bool),
+        "number": lambda: isinstance(value, (int, float))
+        and not isinstance(value, bool),
+        "boolean": lambda: isinstance(value, bool),
+        "null": lambda: value is None,
+        "array": lambda: isinstance(value, list)
+        and all(_matches_schema(v, schema.get("items", {})) for v in value),
+        "object": lambda: isinstance(value, dict),
+    }
+    return checks[kind]() if kind in checks else True

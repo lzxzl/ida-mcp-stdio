@@ -1,6 +1,6 @@
 """类型工具模块 - 提供结构体和类型信息查询的 MCP 工具。
 
-包含结构体搜索、结构体读取和函数导出等功能。
+包含结构体搜索、结构体定义查询、结构体读取和函数导出等功能。
 """
 
 from __future__ import annotations
@@ -14,20 +14,44 @@ from . import register_tool
 @register_tool
 def search_structs(
     filter: Annotated[str, "大小写不敏感的结构体名称子串"],
-) -> list:
-    """Search for structure types by name substring"""
+    offset: Annotated[int, "分页起始偏移；默认 0"] = 0,
+    count: Annotated[int, "最多返回多少个结构体；默认 50，最大 100"] = 50,
+    max_name_chars: Annotated[
+        int, "单个结构体名称最大字符数；默认 512，最大 4096"
+    ] = 512,
+) -> dict:
+    """Search for structure types by name substring.
+
+    The result is intentionally paginated and long type names are truncated by
+    default. Large C++ binaries can contain thousands of template-heavy type
+    names, and returning all matches can exceed the Claude SDK JSON message
+    limit. Use a narrower filter, offset/count, or a larger max_name_chars only
+    when the exact full type name is required.
+    """
     try:
         import ida_typeinf
 
+        offset = max(0, int(offset))
+        count = min(max(1, int(count)), 100)
+        max_name_chars = min(max(64, int(max_name_chars)), 4096)
+
         results = []
+        total_matches = 0
+        truncated_names = 0
         limit = ida_typeinf.get_ordinal_limit()
+        lowered_filter = filter.lower()
 
         for ordinal in range(1, limit):
             tif = ida_typeinf.tinfo_t()
             if tif.get_numbered_type(None, ordinal):
                 type_name = tif.get_type_name()
-                if type_name and filter.lower() in type_name.lower():
+                if type_name and lowered_filter in type_name.lower():
                     if tif.is_udt():
+                        total_matches += 1
+                        if total_matches <= offset:
+                            continue
+                        if len(results) >= count:
+                            continue
                         udt_data = ida_typeinf.udt_type_data_t()
                         cardinality = 0
                         is_union = False
@@ -35,17 +59,59 @@ def search_structs(
                             cardinality = udt_data.size()
                             is_union = udt_data.is_union
 
-                        results.append({
-                            "name": type_name,
-                            "size": tif.get_size(),
-                            "cardinality": cardinality,
-                            "is_union": is_union,
-                            "ordinal": ordinal,
-                        })
+                        display_name = type_name
+                        name_truncated = False
+                        if len(display_name) > max_name_chars:
+                            display_name = (
+                                display_name[:max_name_chars] + "...<truncated>"
+                            )
+                            name_truncated = True
+                            truncated_names += 1
 
-        return results
+                        results.append(
+                            {
+                                "name": display_name,
+                                "name_truncated": name_truncated,
+                                "size": tif.get_size(),
+                                "cardinality": cardinality,
+                                "is_union": is_union,
+                                "ordinal": ordinal,
+                            }
+                        )
+
+        return {
+            "schema_version": "ida-mcp-structured-facts-v1",
+            "tool": "search_structs",
+            "filter": filter,
+            "data": results,
+            "offset": offset,
+            "count": len(results),
+            "total": total_matches,
+            "more": total_matches > offset + len(results),
+            "partial": total_matches > offset + len(results) or truncated_names > 0,
+            "truncated_names": truncated_names,
+            "limits": {
+                "count": count,
+                "max_name_chars": max_name_chars,
+            },
+            "diagnostic": (
+                "Results are paginated/truncated to keep MCP responses below the SDK JSON message limit. "
+                "Use a narrower filter or a later offset when more=true."
+            ),
+        }
     except Exception as e:
-        return [{"error": str(e)}]
+        return {
+            "schema_version": "ida-mcp-structured-facts-v1",
+            "tool": "search_structs",
+            "filter": filter,
+            "data": [],
+            "offset": offset,
+            "count": 0,
+            "total": 0,
+            "more": False,
+            "partial": True,
+            "error": str(e),
+        }
 
 
 @register_tool
@@ -58,7 +124,6 @@ def read_struct(
     If struct name is not provided, attempts auto-detection from address type info.
     """
     try:
-        import ida_bytes
         import ida_ida
         import ida_nalt
         import ida_typeinf
@@ -142,13 +207,15 @@ def read_struct(
             except Exception:
                 value_str = "<failed to read>"
 
-            members.append({
-                "offset": f"0x{member_offset:08X}",
-                "type": member_type,
-                "name": member_name,
-                "size": member_size,
-                "value": value_str,
-            })
+            members.append(
+                {
+                    "offset": f"0x{member_offset:08X}",
+                    "type": member_type,
+                    "name": member_name,
+                    "size": member_size,
+                    "value": value_str,
+                }
+            )
 
         return {"addr": addr, "struct": struct_name, "members": members, "error": None}
     except Exception as e:
@@ -156,9 +223,87 @@ def read_struct(
 
 
 @register_tool
+def get_struct_definition(
+    struct: Annotated[str, "结构体类型名称"],
+) -> dict:
+    """Get struct type definition without reading memory values"""
+    try:
+        import ida_typeinf
+
+        struct_name = struct.strip()
+        if not struct_name:
+            return {
+                "struct": None,
+                "size": None,
+                "cardinality": 0,
+                "is_union": False,
+                "members": None,
+                "error": "Struct name is required",
+            }
+
+        tif = ida_typeinf.tinfo_t()
+        if not tif.get_named_type(None, struct_name):
+            return {
+                "struct": struct_name,
+                "size": None,
+                "cardinality": 0,
+                "is_union": False,
+                "members": None,
+                "error": f"Struct '{struct_name}' not found",
+            }
+
+        udt_data = ida_typeinf.udt_type_data_t()
+        if not tif.get_udt_details(udt_data):
+            return {
+                "struct": struct_name,
+                "size": None,
+                "cardinality": 0,
+                "is_union": False,
+                "members": None,
+                "error": "Failed to get struct details",
+            }
+
+        members = []
+        for member in udt_data:
+            member_offset = member.begin() // 8
+            member_type = member.type._print()
+            member_name = member.name
+            member_size = member.type.get_size()
+
+            members.append(
+                {
+                    "offset": f"0x{member_offset:08X}",
+                    "type": member_type,
+                    "name": member_name,
+                    "size": member_size,
+                }
+            )
+
+        return {
+            "struct": struct_name,
+            "size": tif.get_size(),
+            "cardinality": len(members),
+            "is_union": bool(getattr(udt_data, "is_union", False)),
+            "members": members,
+            "error": None,
+        }
+    except Exception as e:
+        return {
+            "struct": struct,
+            "size": None,
+            "cardinality": 0,
+            "is_union": False,
+            "members": None,
+            "error": str(e),
+        }
+
+
+@register_tool
 def export_funcs(
     addrs: Annotated[str, "函数地址列表（逗号分隔或单个地址）"],
-    format: Annotated[str, "导出格式：json（完整信息）、c_header（C 头文件）、prototypes（原型列表）"] = "json",
+    format: Annotated[
+        str, "导出格式：json（完整信息）、c_header（C 头文件）、prototypes（原型列表）"
+    ] = "json",
 ) -> list:
     """Export function information in various formats"""
     from ..utils import normalize_list_input

@@ -7,6 +7,7 @@ from typing import Any
 
 class IDAError(Exception):
     """IDA-specific error."""
+
     pass
 
 
@@ -56,8 +57,8 @@ def parse_address(addr: str | int) -> int:
 
     # Try symbol name resolution via idalib
     try:
-        import idaapi
         import ida_name
+        import idaapi
 
         ea = ida_name.get_name_ea(idaapi.BADADDR, addr_str)
         if ea != idaapi.BADADDR:

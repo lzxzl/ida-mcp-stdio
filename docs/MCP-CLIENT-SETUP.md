@@ -1,205 +1,131 @@
-# MCP 客户端配置指南
+# MCP 客户端配置
 
-本文档说明如何在各种 MCP 客户端中配置 IDA Pro MCP stdio 服务器。
+先按 [README](../README.md) 安装。以下 `/absolute/path/ida-mcp-stdio` 替换为实际仓库路径。使用绝对 Python 路径，避免客户端 PATH 或全局同名包指向其他环境。
 
-## Claude Desktop
+## 选择后端
 
-### 配置文件位置
+所有示例使用 `--backend native`，始终纯无头，支持 IDA 9.2 / 9.4。需要 9.4+ GUI 或多客户端共享时，先安装 `.[nexus]`，再改为 `--backend nexus`；Nexus 没有匹配实例时启动无头 worker。
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+需要固定 IDA 版本时，在 args / command 数组末尾增加两个元素：`"--ida-dir"` 和安装路径。macOS 例如 `/Applications/IDA Professional 9.4.app/Contents/MacOS`。也可设置 `IDADIR`。
 
-### 配置示例
+## Codex
 
-```json
-{
-  "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe"]
-    }
-  }
-}
+编辑 `~/.codex/config.toml`：
+
+```toml
+[mcp_servers.ida-mcp-stdio]
+command = "/absolute/path/ida-mcp-stdio/.venv/bin/python"
+args = ["-u", "-m", "ida_mcp_stdio", "--backend", "native", "--tool-profile", "compact", "--agent", "codex"]
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 420
 ```
 
-### 带详细日志
-
-```json
-{
-  "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe", "--verbose"]
-    }
-  }
-}
-```
-
-### 使用 Python 路径
-
-如果 `ida-mcp-server` 不在 PATH 中：
-
-```json
-{
-  "mcpServers": {
-    "ida-pro": {
-      "command": "/path/to/python",
-      "args": ["-m", "ida_mcp_stdio", "/path/to/binary.exe"]
-    }
-  }
-}
-```
+检查：`codex mcp get ida-mcp-stdio --json`。该命令查看配置，不代表完成连接测试。[Codex 配置说明](https://developers.openai.com/codex/mcp/)。
 
 ## Claude Code
 
-在项目根目录的 `.mcp.json` 中添加：
+用 CLI 添加用户级配置：
+
+```sh
+claude mcp add --scope user --transport stdio ida-mcp-stdio -- \
+  /absolute/path/ida-mcp-stdio/.venv/bin/python -u -m ida_mcp_stdio \
+  --backend native --tool-profile compact --agent claude-code
+```
+
+也可合并到 `~/.claude.json` 的 `mcpServers`。已有同名配置时更新现有条目；检查当前项目是否另有覆盖。
 
 ```json
 {
   "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe"]
+    "ida-mcp-stdio": {
+      "type": "stdio",
+      "command": "/absolute/path/ida-mcp-stdio/.venv/bin/python",
+      "args": ["-u", "-m", "ida_mcp_stdio", "--backend", "native", "--tool-profile", "compact", "--agent", "claude-code"],
+      "timeout": 420000
     }
   }
 }
 ```
 
-## Cursor
+检查：`claude mcp get ida-mcp-stdio`。[Claude Code 配置说明](https://code.claude.com/docs/en/mcp)。
 
-### 配置文件位置
+## Claude Desktop
 
-`~/.cursor/mcp.json`
-
-### 配置示例
+macOS 配置位于 `~/Library/Application Support/Claude/claude_desktop_config.json`，合并以下条目到已有 `mcpServers`：
 
 ```json
 {
   "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe"]
+    "ida-mcp-stdio": {
+      "command": "/absolute/path/ida-mcp-stdio/.venv/bin/python",
+      "args": ["-u", "-m", "ida_mcp_stdio", "--backend", "native", "--tool-profile", "compact", "--agent", "claude-desktop"]
     }
   }
 }
 ```
 
-## Cline / Roo Code（VS Code 扩展）
+保存后重启 Claude Desktop。其他平台通过应用设置打开对应配置文件。
 
-### 配置文件位置
+## OpenCode
 
-- **Cline**: `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`
-- **Roo Code**: 类似路径，扩展 ID 不同
-
-### 配置示例
+合并到 `~/.config/opencode/opencode.json` 的 `mcp`：
 
 ```json
 {
-  "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe"],
-      "alwaysAllow": [
-        "decompile", "disasm", "list_funcs",
-        "xrefs_to", "callees", "find_bytes",
-        "imports", "list_globals",
-        "get_bytes", "get_int", "get_string", "get_segment_bytes",
-        "search_structs", "read_struct", "export_funcs"
-      ]
+  "mcp": {
+    "ida-mcp-stdio": {
+      "type": "local",
+      "command": ["/absolute/path/ida-mcp-stdio/.venv/bin/python", "-u", "-m", "ida_mcp_stdio", "--backend", "native", "--tool-profile", "compact", "--agent", "opencode"],
+      "enabled": true,
+      "timeout": 420000
     }
   }
 }
 ```
 
-`alwaysAllow` 列出不需要用户确认的工具名称。所有分析工具都是只读的，可以安全设为自动批准。
+检查：`opencode mcp list`。本示例采用已验证的 OpenCode 1.15 配置格式。[OpenCode 配置说明](https://opencode.ai/docs/mcp-servers/)。
 
-## Windsurf
+## ZCode
 
-### 配置文件位置
-
-`~/.windsurf/mcp.json`
-
-### 配置示例
+合并到 `~/.zcode/cli/config.json` 的 `mcp.servers`：
 
 ```json
 {
-  "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe"]
-    }
-  }
-}
-```
-
-## 通用注意事项
-
-### 二进制路径
-
-所有配置中的 `args` 第一个参数是要分析的二进制文件路径。使用绝对路径以避免路径问题。
-
-### IDADIR 环境变量
-
-服务器启动时会自动检测 IDA Pro 安装路径（支持 macOS、Linux、Windows 常见安装位置）。如果 IDA 安装在非标准位置且自动检测失败，可通过 `env` 字段手动指定 `IDADIR`：
-
-```json
-{
-  "mcpServers": {
-    "ida-pro": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/binary.exe"],
-      "env": {
-        "IDADIR": "/path/to/ida/installation"
+  "mcp": {
+    "servers": {
+      "ida-mcp-stdio": {
+        "type": "stdio",
+        "command": "/absolute/path/ida-mcp-stdio/.venv/bin/python",
+        "args": ["-u", "-m", "ida_mcp_stdio", "--backend", "native", "--tool-profile", "compact", "--agent", "zcode"],
+        "timeoutMs": 420000
       }
     }
   }
 }
 ```
 
-> 如果已手动设置 `IDADIR` 环境变量，服务器不会覆盖它。
+ZCode 默认启用服务器。重新加载 MCP 后，在应用的 MCP 管理界面查看连接状态。[ZCode 配置说明](https://zcode.z.ai/en/docs/mcp-services)、[CLI 字段说明](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/README.md#mcp-configuration)。
 
-### 多个二进制
+## Nexus / GUI 环境
 
-如需同时分析多个二进制，配置多个服务器实例：
+Nexus 启动器需安装在运行 MCP 服务的同一 Python 环境；仅把其他环境的 `ida-nexus` 加入 PATH 无效。
 
-```json
-{
-  "mcpServers": {
-    "ida-main-exe": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/main.exe"]
-    },
-    "ida-lib-dll": {
-      "command": "ida-mcp-server",
-      "args": ["/path/to/lib.dll"]
-    }
-  }
-}
+```sh
+.venv/bin/python -m pip install -e '.[nexus]'
+uvx ida-hcli ida python create-environment
+uvx ida-hcli plugin install ida-mcp@https://github.com/HexRaysSA/ida-mcp
+uvx ida-hcli ida python doctor
 ```
 
-## 常见问题
+按 HCLI 输出配置 `IDAPYTHON_VENV_EXECUTABLE`，让 IDA GUI 使用已安装插件依赖的 Python 环境。终端环境变量不会自动传给已启动的 GUI；修改后重启 IDA，并检查启动日志中的 Python 路径。
 
-### Q: 服务器启动失败
+## 验证与排错
 
-1. 检查 `idapro` 包是否可用：
+- 修改配置后重新加载 MCP 或开启新会话；桌面应用可能需要重启。
+- 连接后应发现六个 compact 工具；调用 `reference` 可以在不开库时检查服务。
+- 再调用 `open_database`，执行 `import ida_kernwin; ida_kernwin.get_kernel_version()` 确认实际 IDA 版本。
+- 开库慢时检查客户端工具超时；执行默认 360 秒，示例配置给客户端 420 秒。
+- 连接失败时先运行 `.venv/bin/ida-mcp-server --doctor`，检查 Python 环境、安装目录、Nexus launcher 与客户端 stderr 日志。
 
-```bash
-python -c "import idapro; print('OK')"
-```
-
-2. 如果报 `Cannot load IDA library file libidalib.dylib`，说明找不到 IDA 库文件。服务器会自动检测常见安装路径，但如果 IDA 安装在非标准位置，需手动设置：
-
-```bash
-export IDADIR=/path/to/ida
-```
-
-3. 如果 `idapro` 包本身不存在，确认 IDA Pro >= 9.0 已安装且 Python 版本正确。使用 `idapyswitch` 切换 Python 版本。
-
-### Q: 工具调用无响应
-
-大型二进制的首次加载和分析可能需要较长时间。在 args 中添加 `--verbose` 查看进度日志。
-
-### Q: 如何更换分析的二进制
-
-需要修改配置文件中的路径并重启 MCP 客户端。目前不支持运行时切换二进制。
+`--print-config` 只生成通用 `mcpServers` JSON，不会自动修改客户端配置，也不能直接替代 Codex TOML、OpenCode 或 ZCode 的专用格式。

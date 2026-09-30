@@ -57,3 +57,14 @@ ENV/
 
 # TRACE logging directory
 logs/
+
+# Personal agent configuration and local samples
+.claude/
+so/
+.ruff_cache/
+*.jsonl
+
+# One-off analysis output
+batch_analysis_results.json
+tools_schema.json
+tool_signatures.json
