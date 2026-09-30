@@ -115,6 +115,8 @@ class IDAMCPClient:
         self._stderr_reader_thread: threading.Thread | None = None
         self._stderr_tail: deque[str] = deque(maxlen=200)
         self._stderr_tail_lock = threading.Lock()
+        self._notifications: deque[dict] = deque(maxlen=200)
+        self._notifications_lock = threading.Lock()
 
         cmd = self._build_command(server_script, verbose, server_command, server_args)
         popen_env = os.environ.copy()
@@ -221,6 +223,18 @@ class IDAMCPClient:
                         continue
 
                     if line.startswith("{"):
+                        try:
+                            message = json.loads(line)
+                        except json.JSONDecodeError:
+                            message = None
+                        if (
+                            isinstance(message, dict)
+                            and "method" in message
+                            and "id" not in message
+                        ):
+                            with self._notifications_lock:
+                                self._notifications.append(message)
+                            continue
                         self._response_queue.put(line)
                         continue
 
@@ -428,6 +442,17 @@ class IDAMCPClient:
 
     # MCP protocol methods
 
+    def get_notifications(self) -> list[dict]:
+        """Drain the latest 200 server notifications, including database warnings."""
+        with self._notifications_lock:
+            messages = list(self._notifications)
+            self._notifications.clear()
+        return messages
+
+    def set_logging_level(self, level: str) -> dict:
+        """Set the minimum level of MCP log notifications for this connection."""
+        return self._send_request("logging/setLevel", {"level": level})
+
     def initialize(self) -> dict:
         """Initialize the MCP connection.
 
@@ -463,6 +488,8 @@ class IDAMCPClient:
         name: str,
         arguments: dict | None = None,
         timeout: float | None = None,
+        *,
+        metadata: dict | None = None,
     ) -> Any:
         """Call a tool by name.
 
@@ -485,6 +512,7 @@ class IDAMCPClient:
             {
                 "name": name,
                 "arguments": arguments or {},
+                "_meta": metadata or {},
             },
             timeout=timeout,
         )

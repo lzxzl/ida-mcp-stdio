@@ -10,7 +10,9 @@
 | `backends.py`, `worker.py` | Native worker lifecycle and the Nexus adapter |
 | `execution.py` | Python execution, contexts, output, and exceptions |
 | `reference.py` | Local source API index |
-| `session.py`, `dashboard.py` | Artifacts, JSONL, and HTML export |
+| `session.py` | Artifacts and JSONL recording |
+| `dashboard.py`, `transcripts.py`, `logs.py`, `hooks.py` | Local dashboard, transcript parsing, ZIP exports and client hooks |
+| `install.py`, `cli.py` | Client installation, updates and auxiliary commands |
 | `http.py` | Optional MCP SDK HTTP transport |
 | `client.py` | Python stdio client and paginated retrieval of complete results |
 | `tools/` | Tool registration, database control, analysis, memory, and type helpers |

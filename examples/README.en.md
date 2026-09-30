@@ -10,6 +10,7 @@ Install the project and configure IDA, then run the examples with the project vi
 | Analysis across databases | `.venv/bin/python examples/code_mode.py /path/to/a /path/to/b` | Compact tools, reference, and instance_id routing |
 | Function pagination | `.venv/bin/python examples/pagination_example.py /path/to/binary` | Reads functions by page |
 | Sequential batch analysis | `.venv/bin/python examples/batch_analysis.py /path/to/a /path/to/b` | Closes each database after processing its sample |
+| Tool profile comparison | `.venv/bin/python examples/compare_tool_profiles.py /path/to/binary` | Equivalent results, request counts, payload bytes and timings; optional `--encoding o200k_base` |
 | Session logging | `.venv/bin/python examples/trace_logging_example.py /path/to/binary` | Creates a JSONL trace |
 
 The examples use the default native headless backend. To select an IDA version, set `IDADIR` or pass `--ida-dir` through the client's `server_args`. Automated tests remain in the local `tests/` directory and are excluded from Git.

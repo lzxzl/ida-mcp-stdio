@@ -1,4 +1,4 @@
-# Migration to 0.3
+# Migration to 0.3 / 0.4
 
 [中文](OFFICIAL-MCP-MODERNIZATION.md)
 
@@ -15,6 +15,14 @@
 `execute_python` supports composable analysis, persistent contexts, temporary scopes, top-level await, and structured output. `reference` looks up APIs in local helper and Domain source. Large results are saved as complete artifacts, and the Python client reads all pages automatically. JSONL sessions and HTML export are optional.
 
 These interfaces draw on the [official Hex-Rays MCP](https://github.com/HexRaysSA/ida-mcp). This project has not reproduced its token-saving benchmark and makes no percentage improvement claim.
+
+## Changes in 0.4
+
+- `reference` indexes all public APIs in the installed Domain package, reports its version and returns complete runnable examples. API and example matches have separate pagination; source is returned when requested.
+- Nexus `--idle-timeout` expires inactive leases. It is disabled by default. The last managed headless owner saves and exits; another client's lease and GUI instances remain active. Lifecycle events enter JSONL, and disconnect warnings use MCP logging notifications.
+- `dashboard` shows multiple sessions and explicitly linked agent transcripts. Tokens and costs use recorded values. `logs` exports raw traces, linked transcripts, artifacts and a ZIP manifest.
+- `install` writes Codex, Claude Code / Desktop, OpenCode and ZCode formats with backups. `update` upgrades a venv and refreshes configurations. Optional hooks link Claude Code and supported Codex transcripts; Codex requires `/hooks` review.
+- The [comparison example](../examples/compare_tool_profiles.py) measures equivalent legacy/compact analysis, including discovery overhead. Its payload/token measurements do not reproduce the official agent benchmark.
 
 ## Choosing a backend
 

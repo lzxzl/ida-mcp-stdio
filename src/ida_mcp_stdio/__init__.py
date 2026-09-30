@@ -1,6 +1,6 @@
 """IDA Pro MCP stdio server - simplified MCP server using stdio and idalib."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .client import IDAMCPClient, MCPConnectionError, MCPError, MCPToolError
 from .server import StdioMCPServer

@@ -54,3 +54,15 @@ native 可用 `close_database(save=False)` 在关闭时跳过保存。这个选�
 执行超时默认 360 秒，可用 `execute_python(timeout=...)` 调整。native 的开库和自动分析请求另有 360 秒上限。已经开始的 open、save、close 操作不支持相同的取消中断。未保存修改可能丢失，异常前的部分修改可能已执行。
 
 Nexus 使用官方实现管理超时、取消、共享租约和恢复。实机验证中，9.4 无头 worker 异常退出后重新开库，恢复了已保存的 checkpoint；未保存的数据不保证恢复。native 没有 Nexus 的自动恢复机制。
+
+## 空闲释放
+
+```sh
+.venv/bin/ida-mcp-server --backend nexus --idle-timeout 900
+```
+
+`--idle-timeout` 仅 Nexus 支持，单位为秒，必须是有限正数；`0` 关闭，默认关闭。也可设置 `IDA_MCP_IDLE_TIMEOUT`，命令行优先。
+
+计时针对本会话的无头数据库租约，数据库请求会刷新计时。到期后本会话的实例 ID 失效；其他客户端的租约和 GUI 保留。最后一个租约释放时，官方 worker 保存并关闭 IDB。若收到到期通知后立即重新开库，服务会为该已知过渡最多等待 30 秒。
+
+生命周期写入已启用的 JSONL。断连警告包含实例、原因和数据库状态，通过 MCP logging 发送；未保存修改仍不保证在异常退出时恢复。

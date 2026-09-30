@@ -10,7 +10,9 @@
 | `backends.py`、`worker.py` | native worker 生命周期与 Nexus adapter |
 | `execution.py` | Python 执行、上下文、输出与异常 |
 | `reference.py` | 本机源码 API 索引 |
-| `session.py`、`dashboard.py` | artifact、JSONL 与 HTML 导出 |
+| `session.py` | artifact 与 JSONL 记录 |
+| `dashboard.py`、`transcripts.py`、`logs.py`、`hooks.py` | 本地看板、对话解析、ZIP 导出与客户端 hook |
+| `install.py`、`cli.py` | 客户端安装 / 更新和辅助命令 |
 | `http.py` | 可选 MCP SDK HTTP 传输 |
 | `client.py` | Python stdio 客户端与完整结果的分页读取 |
 | `tools/` | 工具注册、数据库控制、分析、内存与类型 helper |

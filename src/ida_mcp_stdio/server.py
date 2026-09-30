@@ -67,6 +67,21 @@ INSTRUCTIONS = (
 )
 SERVER_NAME = "ida-mcp-stdio"
 SERVER_VERSION = __version__
+LOG_LEVELS = {
+    name: rank
+    for rank, name in enumerate(
+        (
+            "debug",
+            "info",
+            "notice",
+            "warning",
+            "error",
+            "critical",
+            "alert",
+            "emergency",
+        )
+    )
+}
 
 # 结果大小限制
 MAX_RESULT_SIZE = 10 * 1024 * 1024  # 10MB
@@ -99,22 +114,24 @@ class StdioMCPServer:
         session_log: Path | None = None,
         agent: str = "unknown",
         inline_limit: int = 65536,
+        idle_timeout: float | None = None,
     ):
-        from .backends import LocalBackend, NexusBackend
+        from .backends import LocalBackend, NexusBackend, normalize_idle_timeout
 
         if backend not in {"native", "nexus", "embedded"}:
             raise ValueError("backend must be native or nexus")
         if tool_profile not in {"compact", "legacy", "full"}:
             raise ValueError("tool_profile must be compact, legacy or full")
-        self.manager = (
-            None
-            if backend == "embedded"
-            else (NexusBackend() if backend == "nexus" else LocalBackend(max_workers))
-        )
+        self.idle_timeout = normalize_idle_timeout(idle_timeout)
+        if self.idle_timeout is not None and backend != "nexus":
+            raise ValueError("idle_timeout requires the Nexus backend")
         self.backend_name = backend
         self.max_workers = max_workers
         self.tool_profile = tool_profile
         self.session = SessionStore(session_dir, inline_limit, session_log, agent)
+        self._write_lock = threading.Lock()
+        self._notification_sink = None
+        self._logging_level = "warning"
         self._protocol_version = SUPPORTED_PROTOCOLS[-1]
         self._closed = False
         self._request_context = ContextVar("ida_mcp_request", default=None)
@@ -131,6 +148,75 @@ class StdioMCPServer:
         self._request_count = 0
         self._error_count = 0
         self._start_time = time.monotonic()
+        self.manager = (
+            None
+            if backend == "embedded"
+            else (
+                NexusBackend(
+                    idle_timeout=self.idle_timeout, on_event=self._on_database_event
+                )
+                if backend == "nexus"
+                else LocalBackend(max_workers)
+            )
+        )
+
+    def set_notification_sink(self, sink) -> None:
+        """Bind the transport's thread-safe notification writer for this session."""
+        self._notification_sink = sink
+
+    def _session_metadata(self, *sources) -> dict:
+        """Accept transcript hints while keeping session and agent identity local."""
+        metadata = {}
+        aliases = {"claude-code": "claude", "claude-desktop": "claude"}
+        agent_key = aliases.get(self.session.agent, self.session.agent)
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            for key, value in source.items():
+                if not isinstance(key, str):
+                    continue
+                if key.endswith("_session_path"):
+                    if key != agent_key + "_session_path":
+                        continue
+                    if not isinstance(value, str) or not value:
+                        continue
+                if key not in {"agent", "session_id", "mcp_id"}:
+                    metadata[key] = value
+        metadata.update(session_id=self.session.session_id, agent=self.session.agent)
+        return metadata
+
+    def _on_database_event(self, event: str, fields: dict) -> None:
+        """Trace Nexus lifecycle changes and report database loss to the client."""
+        fields = dict(fields)
+        error = fields.get("error")
+        if isinstance(error, BaseException):
+            fields["error"] = {"type": type(error).__name__, "message": str(error)}
+        self.session.record(event, **fields)
+        if event not in {"database_disconnected", "database_release_error"}:
+            return
+        level = "warning" if event == "database_disconnected" else "error"
+        if not self._initialized or LOG_LEVELS[level] < LOG_LEVELS[self._logging_level]:
+            return
+        sink = self._notification_sink
+        if sink is not None:
+            try:
+                sink(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "notifications/message",
+                        "params": {
+                            "level": level,
+                            "logger": "ida-mcp.database",
+                            "data": {
+                                "event": event,
+                                **fields,
+                                "hint": "Reopen the database before continuing; unsaved changes may be lost.",
+                            },
+                        },
+                    }
+                )
+            except Exception:
+                logger.exception("Could not send database lifecycle notification")
 
     def operation_id(self) -> str | None:
         context = self._request_context.get()
@@ -563,6 +649,15 @@ class StdioMCPServer:
                 response = self._handle_tools_list(req_id)
             elif method == "tools/call":
                 response = self._handle_tools_call(req_id, params)
+            elif method == "logging/setLevel":
+                level = params.get("level")
+                if not isinstance(level, str) or level not in LOG_LEVELS:
+                    response = self._error_response(
+                        req_id, INVALID_PARAMS, "Invalid logging level"
+                    )
+                else:
+                    self._logging_level = level
+                    response = self._success_response(req_id, {})
             elif method == "resources/list":
                 response = self._success_response(
                     req_id, {"resources": self.session.list_resources()}
@@ -608,6 +703,14 @@ class StdioMCPServer:
             requested if requested in SUPPORTED_PROTOCOLS else SUPPORTED_PROTOCOLS[-1]
         )
         client_info = params.get("clientInfo", {})
+        if not isinstance(client_info, dict):
+            client_info = {}
+        self.session.record(
+            "initialized",
+            client_info=client_info,
+            protocol_version=self._protocol_version,
+            session=self._session_metadata(params.get("_meta")),
+        )
         logger.info(
             "Client connected: %s %s",
             client_info.get("name", "unknown"),
@@ -620,6 +723,7 @@ class StdioMCPServer:
                 "capabilities": {
                     "tools": {},
                     "resources": {},
+                    "logging": {},
                 },
                 "serverInfo": {
                     "name": SERVER_NAME,
@@ -693,6 +797,10 @@ class StdioMCPServer:
             return self._error_response(
                 req_id, INVALID_PARAMS, "Arguments must be an object"
             )
+        arguments = dict(arguments)
+        metadata = self._session_metadata(
+            params.get("_meta"), arguments.pop("_meta", None)
+        )
 
         tool_def = self.registry.get_tool(tool_name)
         if tool_def is None:
@@ -710,7 +818,11 @@ class StdioMCPServer:
 
         token = self._request_context.set((req_id, uuid.uuid4().hex))
         self.session.record(
-            "tool_start", request_id=req_id, tool=tool_name, arguments=arguments
+            "tool_start",
+            request_id=req_id,
+            tool=tool_name,
+            arguments=arguments,
+            session=metadata,
         )
         try:
             logger.info("Calling tool: %s(%s)", tool_name, arguments)
@@ -747,6 +859,10 @@ class StdioMCPServer:
                 duration=elapsed,
                 is_error=failed,
                 output=packaged,
+                result_artifact=(
+                    packaged["artifact"] if packaged is not result else None
+                ),
+                session=metadata,
             )
             return self._success_response(req_id, payload)
         except Exception as e:  # noqa: BLE001
@@ -764,6 +880,7 @@ class StdioMCPServer:
                 tool=tool_name,
                 duration=elapsed,
                 error=str(e),
+                session=metadata,
             )
             return self._success_response(
                 req_id,
@@ -795,6 +912,7 @@ class StdioMCPServer:
         """Main loop: read from stdin, write to stdout."""
         # 保存原始 stdout 用于 JSON-RPC 通信
         self._original_stdout = sys.stdout
+        self.set_notification_sink(self._write_response)
 
         logger.info("Server started, waiting for requests...")
 
@@ -880,6 +998,7 @@ class StdioMCPServer:
             logger.error("Unexpected error in main loop: %s", traceback.format_exc())
 
         self._shutdown()
+        self.set_notification_sink(None)
 
     def _shutdown(self):
         """Perform graceful shutdown with statistics."""
@@ -908,15 +1027,35 @@ class StdioMCPServer:
                 if hasattr(self, "_original_stdout")
                 else sys.stdout
             )
-            output.write(json.dumps(response, ensure_ascii=False) + "\n")
-            output.flush()
+            with self._write_lock:
+                output.write(
+                    json.dumps(response, ensure_ascii=False, default=str) + "\n"
+                )
+                output.flush()
         except (BrokenPipeError, OSError) as e:
             logger.error("Failed to write response: %s", e)
 
 
-def main():
+def _parse_idle_timeout(value: str) -> float | None:
+    from .backends import normalize_idle_timeout
+
+    try:
+        return normalize_idle_timeout(float(value))
+    except (ValueError, TypeError) as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
+def main(argv: list[str] | None = None):
     """CLI entry point for ida-mcp-server."""
-    parser = argparse.ArgumentParser(description="IDA Pro MCP server (stdio transport)")
+    from .cli import COMMANDS, run_command
+
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in COMMANDS:
+        return run_command(argv[0], argv[1:])
+    parser = argparse.ArgumentParser(
+        description="IDA Pro MCP server (stdio transport)",
+        epilog="Commands: stdio, http, dashboard, logs, hook, install, update. Use COMMAND --help for options.",
+    )
     parser.add_argument(
         "binary",
         nargs="?",
@@ -946,6 +1085,12 @@ def main():
         "--tool-profile", choices=["compact", "legacy", "full"], default="compact"
     )
     parser.add_argument("--max-workers", type=int, default=4)
+    parser.add_argument(
+        "--idle-timeout",
+        type=_parse_idle_timeout,
+        default=os.environ.get("IDA_MCP_IDLE_TIMEOUT") or "0",
+        help="Release this session's idle Nexus headless leases after N seconds; 0 disables (IDA_MCP_IDLE_TIMEOUT)",
+    )
     parser.add_argument(
         "--ida-dir",
         help="Pin an IDA installation directory (takes precedence over IDADIR)",
@@ -984,7 +1129,9 @@ def main():
     parser.add_argument("--transport", choices=["stdio", "http"], default="stdio")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8737)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.idle_timeout is not None and args.backend != "nexus":
+        parser.error("--idle-timeout requires --backend nexus")
 
     if args.ida_dir:
         candidate = Path(args.ida_dir).expanduser().resolve()
@@ -996,6 +1143,7 @@ def main():
     _auto_detect_idadir()
     if args.print_config:
         command_args = [
+            "-u",
             "-m",
             "ida_mcp_stdio",
             "--backend",
@@ -1007,6 +1155,9 @@ def main():
         ]
         if args.ida_dir:
             command_args.extend(["--ida-dir", os.environ["IDADIR"]])
+        command_args.extend(["--idle-timeout", f"{args.idle_timeout or 0:g}"])
+        if args.session_log:
+            command_args.extend(["--session-log", args.session_log])
         if args.binary:
             command_args.append(str(Path(args.binary).expanduser().resolve()))
         print(
@@ -1040,6 +1191,7 @@ def main():
                     "executable": sys.executable,
                     "idadir": os.environ.get("IDADIR"),
                     "backend": args.backend,
+                    "idle_timeout": args.idle_timeout,
                     "packages": versions,
                     "nexus_requirements": "Python >=3.11 and IDA >=9.4; use native for IDA 9.2",
                 },
@@ -1127,6 +1279,7 @@ def main():
         session_log=session_log,
         agent=args.agent,
         inline_limit=args.inline_limit,
+        idle_timeout=args.idle_timeout,
     )
     if session_log:
         logger.info("Session trace: %s", session_log)

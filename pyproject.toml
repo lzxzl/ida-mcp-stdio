@@ -1,6 +1,6 @@
 [project]
 name = "ida-mcp-stdio"
-version = "0.3.0"
+version = "0.4.0"
 description = "Composable IDA MCP server with isolated multi-database workers and optional Nexus"
 readme = "README.md"
 requires-python = ">=3.10"

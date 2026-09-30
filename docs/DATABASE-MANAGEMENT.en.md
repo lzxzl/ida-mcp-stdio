@@ -54,3 +54,15 @@ Only native supports `force_reanalyze=true`. Close the active target first, then
 The default execution timeout is 360 seconds, adjustable with `execute_python(timeout=...)`. Native open and auto-analysis requests have a separate 360-second limit. An open, save, or close operation that has already started does not support the same cancellation interrupt. Unsaved changes may be lost, and some changes may have completed before the failure.
 
 Nexus uses the official implementation for timeouts, cancellation, shared leases, and recovery. Real-machine validation recovered a saved checkpoint by reopening after an IDA 9.4 headless worker exited unexpectedly. Unsaved data is not guaranteed to recover. Native does not have Nexus's automatic recovery mechanism.
+
+## Idle release
+
+```sh
+.venv/bin/ida-mcp-server --backend nexus --idle-timeout 900
+```
+
+`--idle-timeout` is Nexus only, in seconds, and must be positive and finite. `0` disables it; disabled is the default. `IDA_MCP_IDLE_TIMEOUT` supplies an environment default, overridden by the command line.
+
+The timer applies to this session's headless database leases and resets on database requests. Expiry invalidates this session's instance ID while preserving other clients' leases and the GUI. When the last lease expires, the official worker saves and closes the IDB. An immediate reopen waits up to 30 seconds for this known transition.
+
+Lifecycle changes go to the enabled JSONL trace. MCP logging sends disconnect warnings with instance, reason and database state. Unsaved changes remain unprotected against abnormal process exit.

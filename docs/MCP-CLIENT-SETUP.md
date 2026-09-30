@@ -4,6 +4,30 @@
 
 先按 [README](../README.md) 安装。将下面的 `/absolute/path/ida-mcp-stdio` 替换为实际仓库路径。使用绝对 Python 路径，避免客户端 PATH 或全局同名包指向其他环境。
 
+## 安装与更新命令
+
+为当前环境写入五个客户端配置：
+
+```sh
+.venv/bin/ida-mcp-server install --client all --python "$PWD/.venv/bin/python" \
+  --backend nexus --ida-dir '/Applications/IDA Professional 9.4.app/Contents/MacOS' \
+  --session-log auto --hooks
+```
+
+加 `--dry-run` 先查看计划，不修改文件。可用 `--client codex zcode` 选择客户端。安装命令保留其他配置，并同步更新已有同名 Claude 项目覆盖项。写入前备份原文件到 `~/.local/state/ida-mcp-stdio/backups/`。JSONC 注释、尾逗号或有歧义的配置会被拒绝，此类文件可按下方示例手工修改。
+
+从 GitHub main 创建独立安装环境：
+
+```sh
+.venv/bin/ida-mcp-server install --venv --backend nexus --client all
+# 升级当前 venv，并刷新配置
+.venv/bin/ida-mcp-server update --client all
+```
+
+`--venv` 默认使用 `~/.local/share/ida-mcp-stdio/venv`，也可指定路径；`--source` 指定包或仓库来源。更新必须在 venv 中进行，先升级再写配置。它保留已有启动参数、传输方式、启用状态、超时和其他设置，只覆盖明确传入的参数；Claude 项目中的同名配置也会刷新，并保留各自的参数。不带 `--venv` 的 `install` 只写配置，默认 native、compact 和自动会话日志。
+
+`--idle-timeout 秒数` 开启 Nexus 租约空闲释放，`0` 关闭。`--hooks` 为 Claude Code 和支持 hooks 的 Codex CLI 添加转录关联。Codex 必须已启用稳定的 hooks 能力，并在 `/hooks` 中审阅信任；安装器不改功能开关。Windows 的 Codex hooks 需手工配置。已运行客户端需要重新加载 MCP 才会使用新版本。
+
 ## 选择后端
 
 下面的配置使用 `--backend native`，始终无头运行，支持 IDA 9.2 / 9.4。需要 9.4+ GUI 或多客户端共享时，先安装 `.[nexus]`，再改为 `--backend nexus`。Nexus 找不到匹配实例时会启动无头 worker。
@@ -130,4 +154,4 @@ uvx ida-hcli ida python doctor
 - 开库慢时，检查客户端的工具超时设置。执行默认上限为 360 秒，示例中的客户端超时为 420 秒。
 - 连接失败时先运行 `.venv/bin/ida-mcp-server --doctor`，检查 Python 环境、安装目录、Nexus launcher 与客户端 stderr 日志。
 
-`--print-config` 生成的是通用 `mcpServers` JSON，不会修改客户端配置。Codex TOML、OpenCode 和 ZCode 仍需使用各自的配置格式。
+`--print-config` 只打印通用 `mcpServers` JSON，不写文件。用 `install` 可直接写入各客户端的配置格式。

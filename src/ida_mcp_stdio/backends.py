@@ -10,6 +10,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,20 @@ def _timeout(value: float) -> float:
     ):
         raise ValueError("timeout must be a positive finite number")
     return float(value)
+
+
+def normalize_idle_timeout(value: float | None) -> float | None:
+    """Normalize an opt-in Nexus lease timeout; zero disables idle release."""
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+    ):
+        raise ValueError("idle_timeout must be a finite positive number, zero, or None")
+    return float(value) if value else None
 
 
 class Worker:
@@ -382,7 +397,12 @@ class LocalBackend:
 class NexusBackend:
     """Adapt the official public Manager API; IDA 9.4+ and Python 3.11+ required."""
 
-    def __init__(self):
+    def __init__(self, *, idle_timeout: float | None = None, on_event=None):
+        idle_timeout = normalize_idle_timeout(idle_timeout)
+        self._idle_release_paths: dict[str, float] = {}
+        self._event_lock = threading.Lock()
+        self._on_event = on_event
+        self._idle_timeout = idle_timeout
         try:
             from ida_nexus import DatabaseManager
         except ImportError as error:
@@ -392,7 +412,40 @@ class NexusBackend:
         from .nexus_compat import install_nexus_compatibility
 
         install_nexus_compatibility()
-        self.manager = DatabaseManager()
+        self.manager = DatabaseManager(
+            idle_timeout=idle_timeout, on_event=self._on_lifecycle_event
+        )
+
+    def _on_lifecycle_event(self, event: str, fields: dict) -> None:
+        target = fields.get("target", {})
+        if (
+            self._idle_timeout is not None
+            and event == "database_disconnected"
+            and "lease expired" in str(fields.get("reason", ""))
+            and isinstance(target, dict)
+            and target.get("managed")
+            and target.get("backend") == "idalib"
+        ):
+            # Expiry is reported before the last owner finishes packing its IDB.
+            # Retry only this known idle-close transition, never general lock errors.
+            with self._event_lock:
+                now = time.monotonic()
+                self._prune_idle_releases(now)
+                deadline = now + 30
+                for key in ("requested_path", "exe_path", "idb_path"):
+                    if isinstance(target.get(key), str):
+                        path = str(Path(target[key]).expanduser().resolve())
+                        self._idle_release_paths[path] = deadline
+        if self._on_event is not None:
+            self._on_event(event, fields)
+
+    def _prune_idle_releases(self, now: float) -> None:
+        """Discard elapsed transition records while holding the event lock."""
+        self._idle_release_paths = {
+            path: deadline
+            for path, deadline in self._idle_release_paths.items()
+            if deadline > now
+        }
 
     def resolve_instance_id(self, instance_id: str | None) -> str:
         return self.manager.resolve_instance_id(instance_id)
@@ -404,10 +457,32 @@ class NexusBackend:
             raise ValueError(
                 "Nexus cannot force-rebuild a shared database; use the native backend for this operation"
             )
+        from ida_nexus.errors import DatabaseBusyError
+
+        resolved = str(Path(path).expanduser().resolve())
+        with self._event_lock:
+            self._prune_idle_releases(time.monotonic())
+            release_deadline = self._idle_release_paths.get(resolved)
+        while True:
+            try:
+                opened = self.manager.open_database(path, set_current=set_current)
+                break
+            except DatabaseBusyError as error:
+                with self._event_lock:
+                    deadline = self._idle_release_paths.get(resolved, 0)
+                if "HTTP 503" not in str(error) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+        with self._event_lock:
+            self._idle_release_paths = {
+                alias: deadline
+                for alias, deadline in self._idle_release_paths.items()
+                if deadline != release_deadline
+            }
         return {
             "success": True,
-            "path": str(Path(path).expanduser().resolve()),
-            **self.manager.open_database(path, set_current=set_current),
+            "path": resolved,
+            **opened,
         }
 
     def list_databases(self) -> dict:

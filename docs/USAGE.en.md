@@ -66,6 +66,20 @@ stdout and stderr are each capped at 1 MiB; excess output sets `output_truncated
 
 Use `reference` to look up parameters and implementations. It indexes this project's helpers and installed Domain source, and returns official links for the low-level IDAPython SDK documentation. Decompilation and microcode tools require a licensed Hex-Rays decompiler for the target architecture. Structured facts are analysis evidence; check them against decompilation and assembly.
 
+## API lookup and notifications
+
+`reference` returns `domain_version`, `entries` and `examples`. API entries use `total` / `next_offset`; examples use `examples_total` / `examples_next_offset`. Both use the query's `offset` and `limit`. `include_source=True` returns complete source. Lookup indexes locally installed source without loading IDA.
+
+```python
+api = client.reference("decompile", include_source=True)
+print(api["domain_version"], api["examples"])
+client.set_logging_level("warning")
+for message in client.get_notifications():
+    print(message["params"]["data"])
+```
+
+The Python client receives notifications in the background. `get_notifications()` drains up to the latest 200 messages. Reopen a disconnected Nexus database and use its new instance ID. Other clients set their threshold with MCP `logging/setLevel` and receive `notifications/message`.
+
 ## Large results and pagination
 
 When a tool result exceeds the default 64 KiB limit, the response contains `artifact` metadata and a `preview`. The full JSON is saved as a private file. Only its MCP session can read the URI.

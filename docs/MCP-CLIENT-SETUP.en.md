@@ -4,6 +4,30 @@
 
 Install the project using the [README](../README.en.md). Replace `/absolute/path/ida-mcp-stdio` below with your repository path. Use an absolute Python path so the client's PATH or a global package of the same name does not select another environment.
 
+## Install and update commands
+
+Write all five client configurations for the current environment:
+
+```sh
+.venv/bin/ida-mcp-server install --client all --python "$PWD/.venv/bin/python" \
+  --backend nexus --ida-dir '/Applications/IDA Professional 9.4.app/Contents/MacOS' \
+  --session-log auto --hooks
+```
+
+Add `--dry-run` to inspect planned settings without changing files. Select individual clients with `--client codex zcode`. Install preserves unrelated settings and updates existing Claude project overrides of the same server name. Originals are backed up under `~/.local/state/ida-mcp-stdio/backups/` before writes. JSONC comments/trailing commas and ambiguous configurations are rejected; use the manual examples below for those files.
+
+To create a private installation from GitHub main:
+
+```sh
+.venv/bin/ida-mcp-server install --venv --backend nexus --client all
+# Upgrade the current venv and refresh configs
+.venv/bin/ida-mcp-server update --client all
+```
+
+`--venv` defaults to `~/.local/share/ida-mcp-stdio/venv`; an explicit path selects another environment. `--source` selects a package/repository source. Update requires a venv and upgrades it before writing configs. It preserves existing startup arguments, transport, enabled state, timeouts and other settings; only explicitly supplied flags override them. Existing same-name Claude project entries are refreshed with their own arguments retained. `install` without `--venv` only writes configs; its defaults are native, compact and automatic session logs.
+
+`--idle-timeout SECONDS` opts into Nexus lease expiry; `0` disables it. `--hooks` adds transcript hooks for Claude Code and supported Codex CLI versions. Codex must have its stable hooks capability enabled and requires review in `/hooks`; the installer does not change feature flags. Codex Windows hooks need manual setup. Existing client processes use their loaded version until MCP is reloaded.
+
 ## Choosing a backend
 
 The configurations below use `--backend native`, which always runs headless and supports IDA 9.2 / 9.4. For a GUI or sharing across clients on 9.4+, install `.[nexus]` and switch to `--backend nexus`. Nexus starts a headless worker when it cannot find a matching instance.
@@ -130,4 +154,4 @@ Follow the HCLI output to configure `IDAPYTHON_VENV_EXECUTABLE` so the GUI uses 
 - If opening a database is slow, check the client's tool timeout. Execution defaults to 360 seconds; the examples give the client 420 seconds.
 - If connection fails, run `.venv/bin/ida-mcp-server --doctor` and check the Python environment, installation directory, Nexus launcher, and the client's stderr log.
 
-`--print-config` generates generic `mcpServers` JSON and does not change client configuration. Codex TOML, OpenCode, and ZCode still need their own configuration formats.
+`--print-config` prints generic `mcpServers` JSON without writing files. Use `install` to write each client's own format.
