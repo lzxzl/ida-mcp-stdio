@@ -1,10 +1,12 @@
 # ida-mcp-stdio
 
-IDA Pro 的 MCP 服务，默认通过 stdio 通信。支持无头分析、多数据库、Python 组合分析，以及可选的官方 Nexus / GUI 共享后端。
+[English](README.en.md)
+
+IDA Pro 的 MCP 服务，默认使用 stdio。可以无头运行，同时打开多个数据库，并用 Python 组合分析工具。可选的官方 Nexus 后端支持 GUI 共享。
 
 ## 安装
 
-需要已安装并授权的 IDA Pro，且 idalib 可用。
+使用前需安装并授权 IDA Pro，确认 idalib 可用。
 
 ```sh
 python3 -m venv .venv
@@ -17,7 +19,7 @@ python3 -m venv .venv
 | `native`，默认 | 3.10+ | idalib 9.0+；已验证 9.2、9.4 | 始终无头；每个数据库一个独立 worker |
 | `nexus` | 3.11+ | 9.4+ | 复用官方实例与 GUI；没有匹配实例时启动无头 worker |
 
-Nexus 安装：`.venv/bin/python -m pip install -e '.[nexus]'`。本项目按 9.4+ 接口适配，实机验证版本为 9.4。
+使用 Nexus 时安装：`.venv/bin/python -m pip install -e '.[nexus]'`。后端按 9.4+ 接口适配，已在 9.4 上完成实机验证。
 
 ## 启动
 
@@ -32,9 +34,9 @@ Nexus 安装：`.venv/bin/python -m pip install -e '.[nexus]'`。本项目按 9.
   --ida-dir '/Applications/IDA Professional 9.4.app/Contents/MacOS'
 ```
 
-不传二进制路径时，由客户端调用 `open_database`。也可在命令末尾附上二进制或 IDB 路径。stdio 服务需要 MCP 客户端通过双向管道连接。
+启动时未指定二进制路径，就由客户端调用 `open_database` 开库。也可以在命令末尾附上二进制或 IDB 路径。MCP 客户端通过双向管道连接 stdio 服务。
 
-`--ida-dir` 优先于 `IDADIR`；均未设置时自动检测安装目录。GUI 复用需要安装官方插件并配置 IDAPython 环境，见[客户端配置](docs/MCP-CLIENT-SETUP.md)。
+`--ida-dir` 优先于 `IDADIR`。两者都未设置时，服务自动检测安装目录。复用 GUI 前需安装官方插件并配置 IDAPython 环境，见[客户端配置](docs/MCP-CLIENT-SETUP.md)。
 
 ## 工具
 
@@ -46,7 +48,7 @@ Nexus 安装：`.venv/bin/python -m pip install -e '.[nexus]'`。本项目按 9.
 | `list_databases` | 查看数据库实例、状态和当前目标 |
 | `save_database` | 保存指定数据库 |
 | `close_database` | 保存并关闭 native worker，或释放 Nexus 租约 |
-| `reference` | 离线查询本机 helper / Domain API 的签名、说明和源码 |
+| `reference` | 离线查询本机 helper 和 Domain API 的签名、说明和源码 |
 | `execute_python` | 在指定数据库中运行 Python，组合 IDAPython 与现有分析工具 |
 
 `--tool-profile legacy` 展示原有工具；`full` 展示全部工具。未展示的已注册工具仍可按名称调用。Python 客户端默认使用 `legacy`。
@@ -68,9 +70,9 @@ with IDAMCPClient(tool_profile="compact") as client:
     client.close_database(target["instance_id"])
 ```
 
-变量按数据库保留；末尾表达式作为返回值。执行支持顶层 `await`，返回 stdout、stderr、耗时和结构化异常。结果需要能编码为 JSON。
+每个数据库分别保留 Python 变量，末尾表达式作为返回值。代码支持顶层 `await`，执行结果包含 stdout、stderr、耗时和结构化异常。返回值必须能编码为 JSON。
 
-native 默认最多保留四个数据库。执行中超时或取消会终止目标 worker，未保存修改可能丢失；MCP 主服务和其他数据库保留。大结果自动保存为本地 artifact，Python 客户端自动读取完整分页。
+native 默认最多保留四个数据库。执行中超时或取消会终止目标 worker，未保存的修改可能丢失。MCP 主服务和其他数据库仍然保留。大结果会保存为本地 artifact，Python 客户端自动读取所有分页。
 
 Python 执行具有当前用户的文件、进程和 IDB 权限，不提供沙箱。
 

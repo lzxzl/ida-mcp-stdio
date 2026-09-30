@@ -1,10 +1,12 @@
 # MCP 客户端配置
 
-先按 [README](../README.md) 安装。以下 `/absolute/path/ida-mcp-stdio` 替换为实际仓库路径。使用绝对 Python 路径，避免客户端 PATH 或全局同名包指向其他环境。
+[English](MCP-CLIENT-SETUP.en.md)
+
+先按 [README](../README.md) 安装。将下面的 `/absolute/path/ida-mcp-stdio` 替换为实际仓库路径。使用绝对 Python 路径，避免客户端 PATH 或全局同名包指向其他环境。
 
 ## 选择后端
 
-所有示例使用 `--backend native`，始终纯无头，支持 IDA 9.2 / 9.4。需要 9.4+ GUI 或多客户端共享时，先安装 `.[nexus]`，再改为 `--backend nexus`；Nexus 没有匹配实例时启动无头 worker。
+下面的配置使用 `--backend native`，始终无头运行，支持 IDA 9.2 / 9.4。需要 9.4+ GUI 或多客户端共享时，先安装 `.[nexus]`，再改为 `--backend nexus`。Nexus 找不到匹配实例时会启动无头 worker。
 
 需要固定 IDA 版本时，在 args / command 数组末尾增加两个元素：`"--ida-dir"` 和安装路径。macOS 例如 `/Applications/IDA Professional 9.4.app/Contents/MacOS`。也可设置 `IDADIR`。
 
@@ -21,7 +23,7 @@ startup_timeout_sec = 30
 tool_timeout_sec = 420
 ```
 
-检查：`codex mcp get ida-mcp-stdio --json`。该命令查看配置，不代表完成连接测试。[Codex 配置说明](https://developers.openai.com/codex/mcp/)。
+检查：`codex mcp get ida-mcp-stdio --json`。该命令用于查看配置，不会测试连接。[Codex 配置说明](https://developers.openai.com/codex/mcp/)。
 
 ## Claude Code
 
@@ -33,7 +35,7 @@ claude mcp add --scope user --transport stdio ida-mcp-stdio -- \
   --backend native --tool-profile compact --agent claude-code
 ```
 
-也可合并到 `~/.claude.json` 的 `mcpServers`。已有同名配置时更新现有条目；检查当前项目是否另有覆盖。
+也可合并到 `~/.claude.json` 的 `mcpServers`。已有同名配置时，更新现有条目，并检查当前项目是否另有覆盖。
 
 ```json
 {
@@ -84,7 +86,7 @@ macOS 配置位于 `~/Library/Application Support/Claude/claude_desktop_config.j
 }
 ```
 
-检查：`opencode mcp list`。本示例采用已验证的 OpenCode 1.15 配置格式。[OpenCode 配置说明](https://opencode.ai/docs/mcp-servers/)。
+检查：`opencode mcp list`。示例使用已验证的 OpenCode 1.15 配置格式。[OpenCode 配置说明](https://opencode.ai/docs/mcp-servers/)。
 
 ## ZCode
 
@@ -109,7 +111,7 @@ ZCode 默认启用服务器。重新加载 MCP 后，在应用的 MCP 管理界�
 
 ## Nexus / GUI 环境
 
-Nexus 启动器需安装在运行 MCP 服务的同一 Python 环境；仅把其他环境的 `ida-nexus` 加入 PATH 无效。
+将 Nexus 启动器安装在 MCP 服务使用的 Python 环境中。其他环境的 `ida-nexus` 即使在 PATH 中，也不会被使用。
 
 ```sh
 .venv/bin/python -m pip install -e '.[nexus]'
@@ -118,14 +120,14 @@ uvx ida-hcli plugin install ida-mcp@https://github.com/HexRaysSA/ida-mcp
 uvx ida-hcli ida python doctor
 ```
 
-按 HCLI 输出配置 `IDAPYTHON_VENV_EXECUTABLE`，让 IDA GUI 使用已安装插件依赖的 Python 环境。终端环境变量不会自动传给已启动的 GUI；修改后重启 IDA，并检查启动日志中的 Python 路径。
+按 HCLI 输出配置 `IDAPYTHON_VENV_EXECUTABLE`，让 IDA GUI 使用已安装插件依赖的 Python 环境。已启动的 GUI 不会自动获得终端环境变量。修改后重启 IDA，并在启动日志中检查 Python 路径。
 
 ## 验证与排错
 
 - 修改配置后重新加载 MCP 或开启新会话；桌面应用可能需要重启。
 - 连接后应发现六个 compact 工具；调用 `reference` 可以在不开库时检查服务。
 - 再调用 `open_database`，执行 `import ida_kernwin; ida_kernwin.get_kernel_version()` 确认实际 IDA 版本。
-- 开库慢时检查客户端工具超时；执行默认 360 秒，示例配置给客户端 420 秒。
+- 开库慢时，检查客户端的工具超时设置。执行默认上限为 360 秒，示例中的客户端超时为 420 秒。
 - 连接失败时先运行 `.venv/bin/ida-mcp-server --doctor`，检查 Python 环境、安装目录、Nexus launcher 与客户端 stderr 日志。
 
-`--print-config` 只生成通用 `mcpServers` JSON，不会自动修改客户端配置，也不能直接替代 Codex TOML、OpenCode 或 ZCode 的专用格式。
+`--print-config` 生成的是通用 `mcpServers` JSON，不会修改客户端配置。Codex TOML、OpenCode 和 ZCode 仍需使用各自的配置格式。
