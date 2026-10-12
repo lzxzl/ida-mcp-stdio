@@ -6,16 +6,18 @@ An MCP server for IDA Pro, using stdio by default. It runs without a GUI, keeps 
 
 ## Before and after
 
-This project grew from the single-database stdio server in 0.1.0 to 0.4.0. The six-tool Code Mode follows the official Hex-Rays MCP design. GUI and client sharing use the official `ida-nexus` library directly.
+This project grew from the single-database stdio server in 0.1.0 to 0.5.0. The six-tool Code Mode follows the official Hex-Rays MCP design. GUI and client sharing use the official `ida-nexus` library directly.
 
-| Area | 0.1.0, before | 0.4.0, current |
+| Area | 0.1.0, before | 0.5.0, current |
 | --- | --- | --- |
 | Analysis | Separate tool calls for each operation | Six default tools; Python composes existing helpers and IDAPython |
 | Databases | IDA and the protocol share one process and one database | A native worker per database, routed by `instance_id` |
 | Sharing | No GUI or sharing across clients | Nexus reuses GUI or headless instances and shares IDB changes |
 | API lookup | Consult documentation separately | Offline installed Domain API, version and complete examples, plus project helpers |
 | Results and failures | Oversized results return errors; IDA failures affect the server | Paginated result artifacts; native worker failures stay isolated from other databases |
-| Setup and maintenance | Configure stdio clients manually | Client installation and updates, Nexus idle release and disconnect notifications, session dashboard and ZIP export |
+| Setup and maintenance | Configure stdio clients manually | Client installation and updates, official GUI plugin deployment, Nexus lifecycle management, session dashboard and ZIP export |
+| Client transcripts | No automatic correlation | Claude / Codex hooks, an OpenCode active-session plugin, and durable ZCode hook transcripts |
+| Distribution | Manual local installation | Codex / Claude plugin packages and a version-checked wheel / sdist release workflow |
 
 Native retains IDA 9.2 support; Nexus sharing requires IDA 9.4+. Six entry tools reduce the tool schema footprint. Actual tokens and timings depend on the workflow. Run the [comparison example](examples/compare_tool_profiles.py) on your sample; see the [changelog](CHANGELOG.en.md) for individual changes.
 
@@ -34,7 +36,7 @@ python3 -m venv .venv
 | `native`, default | 3.10+ | idalib 9.0+; tested with 9.2 and 9.4 | Always headless; one independent worker per database |
 | `nexus` | 3.11+ | 9.4+ | Reuses official instances and the GUI; starts a headless worker when no matching instance exists |
 
-To use Nexus, install it with `.venv/bin/python -m pip install -e '.[nexus]'`. The backend targets the 9.4+ API and has been tested on a real IDA 9.4 installation.
+To use Nexus, install it with `.venv/bin/python -m pip install -e '.[nexus]'`. Sharing was verified on IDA 9.4 / Nexus 0.13.0. Version 0.5 requires Nexus 0.13.4; GUI deployment with that version remains unverified. See [validation scope](docs/TESTING.en.md).
 
 Configure local clients:
 
@@ -43,7 +45,7 @@ Configure local clients:
 # Add --dry-run to preview without writing files.
 ```
 
-Existing configuration is backed up first. `update` upgrades the package in the selected virtual environment and refreshes client configuration. See [client setup](docs/MCP-CLIENT-SETUP.en.md) for private environments and hooks.
+Existing configuration is backed up first. `update` upgrades the package in the selected virtual environment and refreshes client configuration. `install --hooks` can link current sessions from Claude Code, supported Codex, OpenCode and ZCode. See [client setup](docs/MCP-CLIENT-SETUP.en.md) for GUI deployment and marketplace installation.
 
 ## Starting the server
 
@@ -106,6 +108,7 @@ Python code has the current user's file, process, and IDB permissions. Execution
 - [Client setup](docs/MCP-CLIENT-SETUP.en.md): Codex, Claude, OpenCode, ZCode, and the GUI environment.
 - [Database management](docs/DATABASE-MANAGEMENT.en.md): routing, saving, closing, and recovery.
 - [Architecture](docs/CLIENT-ARCHITECTURE.en.md), [logging](docs/TRACE-LOGGING.en.md), and [development](docs/MCP-SERVER-DEVELOPMENT-GUIDE.en.md).
-- [0.3 / 0.4 migration](docs/OFFICIAL-MCP-MODERNIZATION.en.md), [validation scope](docs/TESTING.en.md), and [runnable examples](examples/README.en.md).
+- [0.3 / 0.4 / 0.5 migration](docs/OFFICIAL-MCP-MODERNIZATION.en.md), [validation scope](docs/TESTING.en.md), and [runnable examples](examples/README.en.md).
+- [Task benchmarks](docs/BENCHMARK.en.md) and [releases](docs/RELEASING.en.md).
 
 References: [Hex-Rays MCP introduction](https://hex-rays.com/blog/hex-rays-ida-mcp-server), [official implementation](https://github.com/HexRaysSA/ida-mcp).

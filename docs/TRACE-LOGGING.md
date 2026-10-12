@@ -14,7 +14,7 @@ JSONL 会话记录按需开启：
 .venv/bin/ida-mcp-server --session-log /path/to/session.jsonl
 ```
 
-`auto` 写入 `~/.local/state/ida-mcp-stdio/<session-id>.jsonl`。记录包含初始化、工具参数、结果、错误、耗时和 Nexus 生命周期事件。新建状态目录权限为 0700，文件为 0600。记录失败会输出警告，不改变已完成工具的结果。
+`auto` 写入 `~/.local/state/ida-mcp-stdio/<session-id>.jsonl`。`IDA_MCP_STDIO_STATE_DIR` 可将默认日志、artifact、转录和看板目录改为其他绝对路径。记录包含初始化、工具参数、结果、错误、耗时和 Nexus 生命周期事件。新建状态目录权限为 0700，文件为 0600。记录失败会输出警告，不改变已完成工具的结果。
 
 ## 会话看板
 
@@ -31,9 +31,11 @@ JSONL 会话记录按需开启：
 
 ## 关联客户端转录
 
-用 `install --hooks` 安装 Claude Code 和支持 hooks 的 Codex CLI 适配。Codex 新增或修改 hook 后，需要在 `/hooks` 中审阅信任才会运行。Hook 将转录路径放入工具输入的 `_meta`，服务端在参数校验和执行前将其移除。
+用 `install --hooks` 安装 Claude Code、支持 hooks 的 Codex CLI、OpenCode 和 ZCode 适配。Codex 新增或修改 hook 后，需要在 `/hooks` 中审阅信任才会运行。适配器将转录路径放入工具输入的 `_meta`，服务端在参数校验和执行前将其移除。
 
-解析器支持 Claude、Codex、Copilot、OpenCode 和 ZCode 的记录格式。Copilot 可使用 `hook copilot`；自动安装 hooks 的范围是 Claude Code 和 Codex。其他客户端可通过 `_meta` 提供会话路径，例如 Python 客户端：
+OpenCode V1 插件只读取调用 IDA 工具的当前会话，并在工具和会话事件后刷新私有快照。ZCode 将回调中的临时转录和 IDA 工具事件保存到私有会话文件。保存目录在安装时确定；设置 `IDA_MCP_STDIO_STATE_DIR` 后重新安装或更新 `--hooks` 才会切换路径。已有禁用状态保留；开启方式见[客户端配置](MCP-CLIENT-SETUP.md)。ZCode hook 未提供 token / 费用时保持不可用。
+
+解析器仍支持 Claude、Codex、Copilot、OpenCode 和 ZCode 的记录格式；原有 `hook copilot` 适配保留。其他客户端可通过 `_meta` 提供会话路径，例如 Python 客户端：
 
 ```python
 client.call_tool("reference", {"query": "decompile"}, metadata={

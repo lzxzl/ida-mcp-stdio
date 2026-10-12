@@ -1,4 +1,4 @@
-# Migration to 0.3 / 0.4
+# Migration to 0.3 / 0.4 / 0.5
 
 [中文](OFFICIAL-MCP-MODERNIZATION.md)
 
@@ -23,6 +23,14 @@ These interfaces draw on the [official Hex-Rays MCP](https://github.com/HexRaysS
 - `dashboard` shows multiple sessions and explicitly linked agent transcripts. Tokens and costs use recorded values. `logs` exports raw traces, linked transcripts, artifacts and a ZIP manifest.
 - `install` writes Codex, Claude Code / Desktop, OpenCode and ZCode formats with backups. `update` upgrades a venv and refreshes configurations. Optional hooks link Claude Code and supported Codex transcripts; Codex requires `/hooks` review.
 - The [comparison example](../examples/compare_tool_profiles.py) measures equivalent legacy/compact analysis, including discovery overhead. Its payload/token measurements do not reproduce the official agent benchmark.
+
+## Changes in 0.5
+
+- `--gui-plugin` deploys the official GUI provider through HCLI, including environment checks, explicit IDAPython venv creation and command previews.
+- `--hooks` adds an OpenCode V1 session plugin and durable ZCode hook transcripts. Claude Desktop still needs an explicitly linked export.
+- Codex / Claude Code marketplace manifests, a Python launcher and usage guidance ship with source. The release workflow checks versions and assets; PyPI uploading needs a configured Trusted Publisher.
+- `benchmark` repeats identical queries on binary copies and checks returned facts. Transcript usage is read separately. Real native 9.2 / 9.4 sample runs produced equivalent batch/separate facts; agent token savings remain unverified.
+- `IDA_MCP_STDIO_STATE_DIR` configures storage. New Nexus installations require 0.13.4+, matching the current official GUI plugin.
 
 ## Choosing a backend
 

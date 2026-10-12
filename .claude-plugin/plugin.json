@@ -1,0 +1,27 @@
+{
+  "name": "ida-mcp-stdio",
+  "version": "0.5.0",
+  "description": "Analyze local IDA databases with isolated workers. 使用隔离工作进程分析本地 IDA 数据库。",
+  "author": {"name": "lzxzl", "url": "https://github.com/lzxzl"},
+  "homepage": "https://github.com/lzxzl/ida-mcp-stdio",
+  "repository": "https://github.com/lzxzl/ida-mcp-stdio",
+  "license": "MIT",
+  "keywords": ["ida", "mcp", "reverse-engineering"],
+  "skills": "./plugin-skills/",
+  "mcpServers": {
+    "ida-mcp-stdio": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/plugin_launcher.py", "stdio", "--agent", "claude-code", "--session-log", "auto"]
+    }
+  },
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "mcp__(.*[_:])?ida[-_]mcp[-_]stdio__.*",
+      "hooks": [{
+        "type": "command",
+        "command": "python3",
+        "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/plugin_launcher.py", "hook", "claude"]
+      }]
+    }]
+  }
+}

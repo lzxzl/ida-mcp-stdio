@@ -13,6 +13,8 @@
 | `session.py` | Artifacts and JSONL recording |
 | `dashboard.py`, `transcripts.py`, `logs.py`, `hooks.py` | Local dashboard, transcript parsing, ZIP exports and client hooks |
 | `install.py`, `cli.py` | Client installation, updates and auxiliary commands |
+| `gui.py` | Official HCLI GUI deployment planning and execution |
+| `benchmark.py`, `assets/opencode-session.js` | Repeatable analysis task benchmarks and OpenCode active-session transcripts |
 | `http.py` | Optional MCP SDK HTTP transport |
 | `client.py` | Python stdio client and paginated retrieval of complete results |
 | `tools/` | Tool registration, database control, analysis, memory, and type helpers |

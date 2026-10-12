@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: python -m pip install build twine
+      - name: Check release tag and synchronized versions
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python scripts/check_release.py --tag "$RELEASE_TAG"
+      - name: Build wheel from sdist
+        run: python -m build
+      - name: Check package metadata and bundled plugin files
+        run: |
+          python -m twine check --strict dist/*
+          python scripts/check_release.py --dist dist
+      - name: Smoke installed wheel without IDA
+        run: |
+          python -m pip install --no-deps dist/*.whl
+          python -m ida_mcp_stdio --doctor
+          ida-mcp-server --print-config
+          python - <<'PY'
+          import json, subprocess, sys
+          messages = [
+              {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+              {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+          ]
+          result = subprocess.run(
+              [sys.executable, "-m", "ida_mcp_stdio"],
+              input="".join(json.dumps(message) + "\n" for message in messages),
+              text=True, capture_output=True, check=True,
+          )
+          responses = [json.loads(line) for line in result.stdout.splitlines()]
+          assert [response["id"] for response in responses] == [1, 2]
+          assert len(responses[1]["result"]["tools"]) == 6
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ida-mcp-stdio/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+      - name: Publish to PyPI with the configured Trusted Publisher
+        uses: pypa/gh-action-pypi-publish@release/v1

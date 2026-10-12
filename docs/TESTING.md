@@ -24,6 +24,21 @@ AI4BA_IDA_MCP_TESTS=1 .venv/bin/python -m pytest tests -v
 
 ## 已验证环境
 
+### 0.5，2026-10-11 / 12
+
+本次环境为 macOS、Python 3.14，用户配置和 IDA 插件目录只读，本地端口绑定受限。
+
+- 完整本地 suite：414 passed、7 skipped、4 failed。四项失败均为 HTTP / 实时看板的 localhost 绑定被环境拒绝；七项默认未启用的 IDA 用例跳过。
+- native 9.2 / 9.4 开库、执行、持久上下文、保存和关闭均通过；两版带符号和部分 strip C++ 的结构化事实往返各通过两项。
+- 固定 C 样本的 batch / separate 基准在两版 IDA 上返回一致事实，工作流请求分别为 1 / 3；未运行模型推理用量基准。
+- 42 项 GUI 适配测试通过。真实 HCLI 0.26.2 doctor 检查通过，但隔离目录无法确认嵌入 Python；没有完成新的 GUI provider 部署验证。
+- OpenCode 1.15.13 / SDK 1.14.40 的实际 V1 客户端接口通过注入 fetch 验证。ZCode 3.14.5 hook 合同与临时转录机制按本机代码检查，保存、并发和配置测试通过；没有进行新模型会话验证。
+- Claude 2.1.267 严格插件验证、隔离 Codex marketplace 安装及实际插件 stdio 握手通过。wheel / sdist 构建和离线安装通过；Twine、外部发布及用户级配置写入受本次环境限制。
+
+实机 native 验证使用临时 `IDAUSR`，保留用户已有的许可接受状态；artifact 与日志使用临时状态目录。新的 Nexus extra 下限为 0.13.4，本机已安装 0.13.0，不能把下面的旧版共享验证当成本次 0.13.4 的实机结果。Windows、Linux 和其他 IDA 产品版本仍未完成实机验证。
+
+### 0.4，2026-09-30
+
 2026-09-30：macOS、Python 3.14.2、IDA Professional 9.2 / 9.4、ida-nexus 0.13.0、ida-domain 0.5.1、MCP SDK 1.26.0。
 
 | 发布前检查 | 结果 |

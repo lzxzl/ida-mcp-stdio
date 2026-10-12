@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": "mcp__(.*[_:])?ida[-_]mcp[-_]stdio__.*",
+      "hooks": [{
+        "type": "command",
+        "command": "python3 \"${PLUGIN_ROOT}/scripts/plugin_launcher.py\" hook codex",
+        "statusMessage": "Linking the active IDA trace. 关联当前 IDA 跟踪。"
+      }]
+    }]
+  }
+}

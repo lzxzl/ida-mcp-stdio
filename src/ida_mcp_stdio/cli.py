@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
-COMMANDS = {"stdio", "http", "dashboard", "logs", "hook", "install", "update"}
+COMMANDS = {
+    "stdio",
+    "http",
+    "dashboard",
+    "logs",
+    "hook",
+    "install",
+    "update",
+    "benchmark",
+}
 
 
 def state_directory() -> Path:
+    configured = os.environ.get("IDA_MCP_STDIO_STATE_DIR")
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_absolute():
+            raise ValueError("state directory must be an absolute path")
+        return path
     return Path.home() / ".local" / "state" / "ida-mcp-stdio"
 
 
@@ -29,6 +45,10 @@ def run_command(command: str, argv: list[str]) -> int | None:
         from .hooks import cli
 
         return cli(argv)
+    if command == "benchmark":
+        from .benchmark import main
+
+        return main(argv)
     parser = argparse.ArgumentParser(prog="ida-mcp-server " + command)
     parser.add_argument("--state-dir", type=Path, default=state_directory())
     if command == "dashboard":

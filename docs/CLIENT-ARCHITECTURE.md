@@ -31,7 +31,7 @@ MCP 客户端 ↔ stdio 服务 ↔ ida_nexus.DatabaseManager
 
 实例发现、认证、事件与崩溃恢复由 Nexus 提供。服务记录 Manager 生命周期事件，并通过 MCP logging 发出断连警告。六个默认工具没有单独的 IDB 修改事件订阅入口；底层 IDB 事件可通过官方 `DatabaseHandle` 订阅。空闲释放设置见[数据库管理](DATABASE-MANAGEMENT.md)。
 
-Nexus 0.13.0 在 macOS 的网络文件系统探测存在 ABI 问题。本项目只在该版本和平台的服务进程内修正 `statfs` 符号绑定，保留官方网络盘限制。
+为旧环境保留 Nexus 0.13.0 的 macOS `statfs` ABI 修正，仅在该版本和平台的服务进程内生效。0.5 的 Nexus extra 使用 0.13.4+；官方网络盘限制保留。
 
 ## stdio
 

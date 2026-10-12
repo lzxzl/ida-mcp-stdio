@@ -13,6 +13,8 @@
 | `session.py` | artifact 与 JSONL 记录 |
 | `dashboard.py`、`transcripts.py`、`logs.py`、`hooks.py` | 本地看板、对话解析、ZIP 导出与客户端 hook |
 | `install.py`、`cli.py` | 客户端安装 / 更新和辅助命令 |
+| `gui.py` | 官方 HCLI GUI 安装计划与执行 |
+| `benchmark.py`、`assets/opencode-session.js` | 固定分析任务基准、OpenCode 当前会话转录插件 |
 | `http.py` | 可选 MCP SDK HTTP 传输 |
 | `client.py` | Python stdio 客户端与完整结果的分页读取 |
 | `tools/` | 工具注册、数据库控制、分析、内存与类型 helper |

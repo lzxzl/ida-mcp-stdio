@@ -428,6 +428,38 @@ def _opencode(records: list[dict]) -> tuple[list[dict], dict]:
 def _zcode(records: list[dict]) -> tuple[list[dict], dict]:
     items, usages, prompts = [], {}, set()
     for index, record in enumerate(records):
+        if record.get("type") == "ida_mcp_hook_session":
+            continue
+        if record.get("type") == "ida_mcp_hook":
+            event = record.get("hook_event_name")
+            transcript = record.get("transcript")
+            for entry in transcript if isinstance(transcript, list) else []:
+                if isinstance(entry, dict) and isinstance(entry.get("message"), dict):
+                    items.extend(_content_items(record, entry["message"]))
+            if event == "PreToolUse":
+                items.append(
+                    _item(
+                        record,
+                        "tool_use",
+                        record.get("tool_input", {}),
+                        "assistant",
+                        str(record.get("tool_name", "")),
+                        record.get("tool_use_id"),
+                    )
+                )
+            elif event in {"PostToolUse", "PostToolUseFailure"}:
+                items.append(
+                    _item(
+                        record,
+                        "tool_result",
+                        record.get("tool_response", record.get("error", "")),
+                        "tool",
+                        str(record.get("tool_name", "")),
+                        record.get("tool_use_id"),
+                    )
+                )
+            # ZCode 3.14.5 hook messages contain no recorded usage or cost.
+            continue
         if record.get("type") != "model_io":
             items.append(_item(record, text=record))
             continue

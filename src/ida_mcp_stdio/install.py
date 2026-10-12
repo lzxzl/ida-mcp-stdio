@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
 
+from .gui import GuiInstallError
+
 SERVER_NAME = "ida-mcp-stdio"
 CLIENTS = ("codex", "claude-code", "claude-desktop", "opencode", "zcode")
 DEFAULT_SOURCE = "git+https://github.com/lzxzl/ida-mcp-stdio.git@main"
@@ -606,6 +608,7 @@ def _codex_update(original: str, settings: dict, *, remove_remote: bool = True) 
 
 
 def _atomic_write(path: Path, content: str) -> None:
+    _hook_path_safe(path, Path.home())
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -615,6 +618,7 @@ def _atomic_write(path: Path, content: str) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+        _hook_path_safe(path, Path.home())
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
@@ -641,8 +645,83 @@ def _codex_hooks_supported() -> bool:
     )
 
 
-def _hook_settings(client: str, python: Path) -> dict:
+def _hook_state_directory(home: Path, client: str) -> Path:
+    if home == _absolute(Path.home()):
+        from .cli import state_directory
+
+        root = state_directory()
+    else:
+        root = home / ".local" / "state" / SERVER_NAME
+    return root / "transcripts" / client
+
+
+def _hook_path_safe(path: Path, home: Path, *, directory: bool = False) -> None:
+    # Check ancestors as well as the leaf: a plugin directory can redirect writes.
+    for candidate in (path, *path.parents):
+        if candidate.is_symlink():
+            if (
+                sys.platform == "darwin"
+                and str(candidate) in {"/tmp", "/var"}
+                and str(candidate.resolve()) == "/private" + str(candidate)
+            ):
+                continue
+            raise ValueError(f"Refusing symlinked configuration: {candidate}")
+        if (
+            (candidate != path or directory)
+            and candidate.exists()
+            and not candidate.is_dir()
+        ):
+            raise ValueError(f"Configuration parent must be a directory: {candidate}")
+
+
+def _opencode_plugin_plan(home: Path) -> _Plan:
+    path = home / ".config" / "opencode" / "plugins" / f"{SERVER_NAME}.js"
+    _hook_path_safe(path, home)
+    original = _read_text(path) if path.exists() else None
+    marker = "// Managed by ida-mcp-stdio: active-session transcript plugin v1."
+    if original is not None and not original.startswith(marker + "\n"):
+        raise ValueError(f"Refusing to replace unmanaged OpenCode plugin: {path}")
+    asset = _read_text(Path(__file__).parent / "assets" / "opencode-session.js")
+    root = _hook_state_directory(home, "opencode")
+    _hook_path_safe(root, home)
+    updated = asset.replace(
+        "__IDA_MCP_STATE_ROOT__", json.dumps(str(root), ensure_ascii=True)
+    )
+    return _Plan(
+        InstallResult(
+            "opencode-hooks",
+            path,
+            updated != original,
+            {"plugin": str(path), "sdk_contract": "v1", "session_snapshots": str(root)},
+        ),
+        original,
+        updated,
+    )
+
+
+def _hook_settings(client: str, python: Path, *, state_dir: Path | None = None) -> dict:
     arguments = ["-u", "-m", "ida_mcp_stdio", "hook", client]
+    if client == "zcode":
+        arguments += ["--state-dir", str(state_dir)]
+        handler = {
+            "type": "process",
+            "command": str(python),
+            "args": arguments,
+            "timeoutMs": 10000,
+        }
+        events = {}
+        for event in (
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "UserPromptSubmit",
+            "Stop",
+        ):
+            group = {"hooks": [dict(handler)]}
+            if event in {"PreToolUse", "PostToolUse", "PostToolUseFailure"}:
+                group["matcher"] = _HOOK_MATCHER
+            events[event] = [group]
+        return {"hooks": {"enabled": True, "events": events}}
     handler = {"type": "command", "timeout": 10}
     if client == "claude-code":
         # Official exec form is portable and never interpolates a shell string.
@@ -652,45 +731,68 @@ def _hook_settings(client: str, python: Path) -> dict:
     return {"hooks": {"PreToolUse": [{"matcher": _HOOK_MATCHER, "hooks": [handler]}]}}
 
 
+def _hook_owned(handler: dict, client: str) -> bool:
+    arguments = handler.get("args", [])
+    if isinstance(arguments, list) and all(isinstance(arg, str) for arg in arguments):
+        for index in range(len(arguments) - 2):
+            if arguments[index : index + 3] == ["ida_mcp_stdio", "hook", client]:
+                suffix = arguments[index + 3 :]
+                if not suffix or (
+                    client == "zcode"
+                    and len(suffix) == 2
+                    and suffix[0] == "--state-dir"
+                ):
+                    return True
+    command = handler.get("command", "")
+    return isinstance(command, str) and bool(
+        re.search(rf"\bida_mcp_stdio\s+hook\s+{re.escape(client)}\s*$", command)
+    )
+
+
 def _hook_update(original: str, path: Path, client: str, settings: dict) -> str:
     data = _json_document(original, path)
     hooks = data.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError(f"hooks must be an object: {path}")
-    groups = hooks.setdefault("PreToolUse", [])
-    if not isinstance(groups, list):
-        raise ValueError(f"PreToolUse must be an array: {path}")
-    managed = settings["hooks"]["PreToolUse"][0]["hooks"][0]
-    installed = False
-    for group in groups:
-        if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
-            raise ValueError(
-                f"PreToolUse matcher groups must contain a hooks array: {path}"
-            )
-        updated = []
-        for handler in group["hooks"]:
-            if not isinstance(handler, dict):
-                raise ValueError(f"PreToolUse hook handlers must be objects: {path}")
-            command = handler.get("command", "")
-            arguments = handler.get("args", [])
-            owned = (
-                isinstance(arguments, list)
-                and arguments[-3:] == ["ida_mcp_stdio", "hook", client]
-            ) or (
-                isinstance(command, str)
-                and re.search(
-                    rf"\bida_mcp_stdio\s+hook\s+{re.escape(client)}\s*$", command
+    if client == "zcode":
+        if "enabled" in hooks and not isinstance(hooks["enabled"], bool):
+            raise ValueError(f"hooks.enabled must be a boolean: {path}")
+        # An explicit disabled setting keeps unrelated dormant hooks disabled.
+        hooks.setdefault("enabled", True)
+        events = hooks.setdefault("events", {})
+        if not isinstance(events, dict):
+            raise ValueError(f"hooks.events must be an object: {path}")
+        managed_events = settings["hooks"]["events"]
+    else:
+        events = hooks
+        managed_events = {"PreToolUse": settings["hooks"]["PreToolUse"]}
+    for event, managed_groups in managed_events.items():
+        groups = events.setdefault(event, [])
+        if not isinstance(groups, list):
+            raise ValueError(f"hooks {event} must be an array: {path}")
+        managed_group = managed_groups[0]
+        managed = managed_group["hooks"][0]
+        installed = False
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                raise ValueError(
+                    f"{event} matcher groups must contain a hooks array: {path}"
                 )
-            )
-            if group.get("matcher") == _HOOK_MATCHER and owned:
-                if not installed:
-                    updated.append(managed)
-                    installed = True
-            else:
-                updated.append(handler)
-        group["hooks"] = updated
-    if not installed:
-        groups.append(settings["hooks"]["PreToolUse"][0])
+            updated = []
+            for handler in group["hooks"]:
+                if not isinstance(handler, dict):
+                    raise ValueError(f"{event} hook handlers must be objects: {path}")
+                if group.get("matcher") == managed_group.get("matcher") and _hook_owned(
+                    handler, client
+                ):
+                    if not installed:
+                        updated.append({**handler, **managed})
+                        installed = True
+                else:
+                    updated.append(handler)
+            group["hooks"] = updated
+        if not installed:
+            groups.append(managed_group)
     if original and data == _json_document(original, path):
         return original
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
@@ -796,12 +898,17 @@ def install_clients(
     """
     home = _absolute(home or Path.home())
     python = _absolute(python or sys.executable)
+    backup_directory_root = (
+        _absolute(backup_root)
+        if backup_root
+        else home / ".local" / "state" / SERVER_NAME / "backups"
+    )
+    _hook_path_safe(backup_directory_root, home, directory=True)
     plans = []
     selected_clients = normalize_clients(clients)
     for client in selected_clients:
         path = client_config_path(client, home=home, platform=platform)
-        if path.is_symlink():
-            raise ValueError(f"Refusing to replace symlinked configuration: {path}")
+        _hook_path_safe(path, home)
         original = _read_text(path) if path.exists() else None
         options = {
             "backend": backend,
@@ -853,10 +960,7 @@ def install_clients(
         )
         if client == "claude-code" and preserve_arguments:
             for project_path in _claude_project_paths(original or "", home=home):
-                if project_path.is_symlink():
-                    raise ValueError(
-                        f"Refusing to replace symlinked project configuration: {project_path}"
-                    )
+                _hook_path_safe(project_path, home)
                 project_original = _read_text(project_path)
                 # An unrelated project file is outside the mutation scope.
                 if SERVER_NAME not in project_original:
@@ -906,19 +1010,30 @@ def install_clients(
             else _codex_hooks_supported() if "codex" in selected_clients else False
         )
         for client in selected_clients:
-            if client != "claude-code" and not (client == "codex" and supported):
+            if client == "opencode":
+                plans.append(_opencode_plugin_plan(home))
+                continue
+            if client not in {"claude-code", "zcode"} and not (
+                client == "codex" and supported
+            ):
                 continue
             path = (
                 home / ".claude" / "settings.json"
                 if client == "claude-code"
-                else home / ".codex" / "hooks.json"
-            )
-            if path.is_symlink():
-                raise ValueError(
-                    f"Refusing to replace symlinked hook configuration: {path}"
+                else (
+                    client_config_path("zcode", home=home)
+                    if client == "zcode"
+                    else home / ".codex" / "hooks.json"
                 )
+            )
+            _hook_path_safe(path, home)
             original = _read_text(path) if path.exists() else None
-            settings = _hook_settings(client, python)
+            state_dir = (
+                _hook_state_directory(home, client) if client == "zcode" else None
+            )
+            if state_dir is not None:
+                _hook_path_safe(state_dir, home)
+            settings = _hook_settings(client, python, state_dir=state_dir)
             prior_index = next(
                 (
                     index
@@ -962,6 +1077,7 @@ def install_clients(
         return [plan.result for plan in plans]
     # Verify that no input changed during planning, before making any backups.
     for plan in changed:
+        _hook_path_safe(plan.result.path, home)
         current = _read_text(plan.result.path) if plan.result.path.exists() else None
         if current != plan.original or plan.result.path.is_symlink():
             raise ValueError(
@@ -970,11 +1086,8 @@ def install_clients(
     backup_directory = None
     backups = {}
     if any(plan.original is not None for plan in changed):
-        root = (
-            _absolute(backup_root)
-            if backup_root
-            else home / ".local" / "state" / SERVER_NAME / "backups"
-        )
+        root = backup_directory_root
+        _hook_path_safe(root, home, directory=True)
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         if os.name != "nt":
             root.chmod(0o700)
@@ -992,9 +1105,10 @@ def install_clients(
     saved = []
     try:
         for plan in changed:
+            _hook_path_safe(plan.result.path, home)
             _atomic_write(plan.result.path, plan.updated)
             saved.append(plan)
-    except OSError:
+    except (OSError, ValueError):
         for plan in reversed(saved):
             if plan.original is None:
                 plan.result.path.unlink()
@@ -1454,7 +1568,7 @@ def build_parser(operation: str = "install") -> argparse.ArgumentParser:
     parser.add_argument(
         "--hooks",
         action="store_true",
-        help="Install transcript hooks for Claude Code and supported Codex CLI (requires /hooks review)",
+        help="Install transcript hooks/plugins for Claude Code, supported Codex CLI, OpenCode and ZCode; review client hooks and start a new session",
     )
     parser.add_argument(
         "--venv",
@@ -1465,6 +1579,44 @@ def build_parser(operation: str = "install") -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--source", default=DEFAULT_SOURCE, help="Package source (default: GitHub main)"
+    )
+    parser.add_argument(
+        "--gui-plugin",
+        action="store_true",
+        help="Install the official IDA 9.4+ Nexus GUI provider through HCLI",
+    )
+    parser.add_argument(
+        "--gui-hcli",
+        type=Path,
+        help="HCLI executable; defaults to the server environment or PATH",
+    )
+    parser.add_argument(
+        "--gui-ida-user-dir",
+        type=Path,
+        help="IDA user directory for GUI plugin installation",
+    )
+    parser.add_argument(
+        "--gui-python", type=Path, help="Existing GUI IDAPython venv interpreter"
+    )
+    parser.add_argument(
+        "--gui-create-environment",
+        action="store_true",
+        help="Allow HCLI to create and configure the GUI Python environment",
+    )
+    parser.add_argument(
+        "--gui-environment",
+        type=Path,
+        help="GUI environment directory (requires --gui-create-environment)",
+    )
+    parser.add_argument(
+        "--gui-no-configure-environment",
+        action="store_true",
+        help="Create GUI venv without persisting its login environment",
+    )
+    parser.add_argument(
+        "--gui-timeout",
+        type=float,
+        help="Timeout per HCLI command, in seconds (default: 300)",
     )
     return parser
 
@@ -1482,6 +1634,18 @@ def main(
     parser = build_parser(operation)
     args = parser.parse_args(argv)
     try:
+        if not args.gui_plugin and any(
+            (
+                args.gui_hcli,
+                args.gui_ida_user_dir,
+                args.gui_python,
+                args.gui_create_environment,
+                args.gui_environment,
+                args.gui_no_configure_environment,
+                args.gui_timeout is not None,
+            )
+        ):
+            raise ValueError("GUI options require --gui-plugin")
         clients = normalize_clients(args.client or "all")
         selected_home = _absolute(args.home or home or Path.home())
         settings = {}
@@ -1535,12 +1699,45 @@ def main(
         required_extras = {
             extra for result in results for extra in result.required_extras
         }
+        gui_plan = None
+        if args.gui_plugin:
+            from .gui import plan_gui_install
+
+            directories = {
+                str(value["ida_dir"])
+                for value in settings.values()
+                if value["ida_dir"] is not None
+            }
+            if len(directories) != 1:
+                raise ValueError("GUI deployment requires one explicit --ida-dir")
+            executable = config_python.parent / (
+                "hcli.exe" if (platform or sys.platform) == "win32" else "hcli"
+            )
+            will_provision = environment is not None or operation == "update"
+            hcli = args.gui_hcli or (
+                executable if executable.is_file() or will_provision else "hcli"
+            )
+            gui_plan = plan_gui_install(
+                ida_dir=next(iter(directories)),
+                hcli=hcli,
+                ida_user_dir=args.gui_ida_user_dir,
+                ida_python=args.gui_python,
+                create_environment=args.gui_create_environment,
+                environment=args.gui_environment,
+                configure_environment=not args.gui_no_configure_environment,
+                timeout=300 if args.gui_timeout is None else args.gui_timeout,
+                platform=platform,
+                allow_missing_hcli=will_provision and args.gui_hcli is None,
+            )
+            required_extras.update(("nexus", "gui"))
         package_backend = "nexus" if "nexus" in required_extras else "native"
         package_source = (
             _with_extra(args.source, "http")
             if "http" in required_extras
             else args.source
         )
+        if "gui" in required_extras:
+            package_source = _with_extra(package_source, "gui")
         commands = []
         if environment is not None:
             _, commands = ensure_environment(
@@ -1560,6 +1757,34 @@ def main(
                     dry_run=args.dry_run,
                 )
             ]
+        if gui_plan is not None:
+            from .gui import execute_gui_install
+
+            execute_gui_install(gui_plan, dry_run=args.dry_run)
+            if args.dry_run:
+                print(
+                    json.dumps(
+                        {
+                            "operation": "gui-install",
+                            "commands": gui_plan.commands,
+                            "ida_dir": str(gui_plan.ida_dir),
+                            "ida_user_dir": str(gui_plan.ida_user_dir),
+                            "gui_python": (
+                                str(gui_plan.ida_python)
+                                if gui_plan.ida_python
+                                else None
+                            ),
+                            "configuration_files": [
+                                str(path) for path in gui_plan.configuration_files
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                print(
+                    f"Installed official GUI provider in {gui_plan.ida_user_dir / 'plugins'}"
+                )
         if not args.dry_run:
             results = install_clients(
                 clients,
@@ -1586,7 +1811,14 @@ def main(
                     ensure_ascii=False,
                 )
             )
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+    except GuiInstallError as exc:
+        detail = str(exc)
+        if exc.stderr.strip():
+            detail += "\n" + exc.stderr.strip()[:4096]
+        if exc.may_have_changes and "external changes may remain" not in detail:
+            detail += "\nHCLI external changes may remain."
+        parser.error(detail)
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
         parser.error(str(exc))
     for result in results:
         if args.dry_run:
@@ -1631,6 +1863,22 @@ def main(
             print(
                 "Skipped Codex hooks: an enabled, stable hooks capability was not detected (Windows hooks require manual setup)."
             )
+    if args.hooks and "opencode" in clients:
+        print(
+            "OpenCode plugin: review the generated local plugin and start a new session; supports the V1 plugin client.session.messages contract (checked with OpenCode 1.15.13 / plugin SDK 1.14.40)."
+        )
+    if args.hooks and "zcode" in clients:
+        print(
+            "ZCode hooks require review: inspect Settings > Hooks, enable hooks if disabled, and start a new session. Only hook-provided current-session data is persisted; missing token/cost data stays unavailable."
+        )
+    if args.hooks and "claude-desktop" in clients:
+        print(
+            "Skipped Claude Desktop hooks: no supported transcript hook/plugin contract is available; attach an explicit transcript when needed."
+        )
+    if args.gui_plugin and not args.dry_run:
+        print(
+            "Restart IDA with the selected IDAPython environment; GUI sharing uses --backend nexus."
+        )
     return 0
 
 

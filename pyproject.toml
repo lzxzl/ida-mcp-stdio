@@ -1,15 +1,29 @@
 [project]
 name = "ida-mcp-stdio"
-version = "0.4.0"
+version = "0.5.0"
 description = "Composable IDA MCP server with isolated multi-database workers and optional Nexus"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+authors = [{name = "lzxzl"}]
+keywords = ["ida", "mcp", "reverse-engineering", "stdio"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+]
 
 dependencies = []
 
 [project.optional-dependencies]
-nexus = ["ida-nexus>=0.13.0,<0.14; python_version >= '3.11'"]
+nexus = ["ida-nexus>=0.13.4,<0.14; python_version >= '3.11'"]
+gui = ["ida-hcli>=0.26.2,<0.27; python_version >= '3.11'"]
 http = ["mcp>=1.26,<2; python_version >= '3.10'", "uvicorn>=0.31"]
 dev = [
     "pytest>=7.0",
@@ -21,12 +35,35 @@ dev = [
 [project.scripts]
 ida-mcp-server = "ida_mcp_stdio.__main__:main"
 
+[project.urls]
+Homepage = "https://github.com/lzxzl/ida-mcp-stdio"
+Repository = "https://github.com/lzxzl/ida-mcp-stdio"
+Issues = "https://github.com/lzxzl/ida-mcp-stdio/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ida_mcp_stdio"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/ida_mcp_stdio",
+    "/.claude-plugin",
+    "/.codex-plugin",
+    "/plugin-skills",
+    "/scripts",
+    "/examples",
+    "/README.md",
+    "/README.en.md",
+    "/CHANGELOG.md",
+    "/CHANGELOG.en.md",
+    "/docs",
+    "/.github/workflows/release.yml",
+    "/LICENSE",
+    "/pyproject.toml",
+]
 
 [tool.black]
 target-version = ["py310"]

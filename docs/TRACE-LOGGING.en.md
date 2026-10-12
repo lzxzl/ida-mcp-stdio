@@ -14,7 +14,7 @@ JSONL recording is optional:
 .venv/bin/ida-mcp-server --session-log /path/to/session.jsonl
 ```
 
-`auto` writes to `~/.local/state/ida-mcp-stdio/<session-id>.jsonl`. The trace records initialization, tool arguments, results, errors, durations and Nexus lifecycle events. New state directories use mode 0700; files use 0600. Recording errors produce warnings without changing completed tool results.
+`auto` writes to `~/.local/state/ida-mcp-stdio/<session-id>.jsonl`. `IDA_MCP_STDIO_STATE_DIR` selects another absolute directory for default traces, artifacts, transcripts and the dashboard. The trace records initialization, tool arguments, results, errors, durations and Nexus lifecycle events. New state directories use mode 0700; files use 0600. Recording errors produce warnings without changing completed tool results.
 
 ## Dashboard
 
@@ -31,9 +31,11 @@ The live dashboard binds to loopback only. It refreshes local sessions and suppo
 
 ## Linking agent transcripts
 
-Install hooks with `install --hooks` for Claude Code and supported Codex CLI versions. Codex requires `/hooks` review before new or changed hooks run. Hooks add the transcript path to tool input `_meta`; the server strips it before validating or running the tool.
+Install adapters with `install --hooks` for Claude Code, supported Codex CLI, OpenCode and ZCode. Codex requires `/hooks` review before new or changed hooks run. Adapters add the transcript path to tool input `_meta`; the server strips it before validating or running the tool.
 
-The parser reads Claude, Codex, Copilot, OpenCode and ZCode records. Copilot has a `hook copilot` adapter; hook installation covers Claude Code and Codex. Other clients can supply their recorded session path in `_meta`, for example through the Python client:
+The OpenCode V1 plugin reads only active sessions that invoke IDA tools and refreshes private snapshots after tool and session events. ZCode saves temporary hook transcripts and IDA tool events in private session files. Snapshot paths are fixed at installation; reinstall or update with `--hooks` after changing `IDA_MCP_STDIO_STATE_DIR`. Existing disabled settings are preserved; see [client setup](MCP-CLIENT-SETUP.en.md). ZCode tokens and cost remain unavailable when hooks supply no usage.
+
+Parsers still read Claude, Codex, Copilot, OpenCode and ZCode records, including the existing `hook copilot` adapter. Other clients can supply their recorded session path in `_meta`, for example through the Python client:
 
 ```python
 client.call_tool("reference", {"query": "decompile"}, metadata={

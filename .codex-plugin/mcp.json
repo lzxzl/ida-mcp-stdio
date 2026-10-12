@@ -1,0 +1,8 @@
+{
+  "ida-mcp-stdio": {
+    "command": "python3",
+    "args": ["scripts/plugin_launcher.py", "stdio", "--agent", "codex", "--session-log", "auto"],
+    "cwd": ".",
+    "env_vars": ["IDA_MCP_STDIO_PYTHON", "IDA_MCP_STDIO_BACKEND", "IDA_MCP_STDIO_STATE_DIR", "IDADIR", "IDAUSR", "IDA_NEXUS_STATE_DIR", "IDA_MCP_STATE_DIR", "IDA_MCP_IDLE_TIMEOUT"]
+  }
+}

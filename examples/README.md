@@ -12,5 +12,6 @@
 | 顺序批量分析 | `.venv/bin/python examples/batch_analysis.py /path/to/a /path/to/b` | 每个样本完成后关闭数据库 |
 | 工具模式对比 | `.venv/bin/python examples/compare_tool_profiles.py /path/to/binary` | 等价结果、请求数、载荷字节和耗时；可选 `--encoding o200k_base` |
 | 会话日志 | `.venv/bin/python examples/trace_logging_example.py /path/to/binary` | 生成 JSONL 记录 |
+| 固定任务基准 | `.venv/bin/ida-mcp-server benchmark run /path/to/binary --label batch --output /path/to/report.json` | 函数、调用关系、字符串与导入；完整命令见[任务基准](../docs/BENCHMARK.md) |
 
 示例使用默认的 native 无头后端。需要指定 IDA 版本时，先设置 `IDADIR`，或在客户端 `server_args` 中传入 `--ida-dir`。自动化测试保留在本地的 `tests/`，不随 Git 发布。

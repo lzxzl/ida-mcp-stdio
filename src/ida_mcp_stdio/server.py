@@ -1262,14 +1262,12 @@ def main(argv: list[str] | None = None):
 
     session_log = None
     if args.session_log:
+        from .cli import state_directory
+
         session_log = (
             Path(args.session_log).expanduser()
             if args.session_log != "auto"
-            else Path.home()
-            / ".local"
-            / "state"
-            / "ida-mcp-stdio"
-            / (uuid.uuid4().hex + ".jsonl")
+            else state_directory() / (uuid.uuid4().hex + ".jsonl")
         )
     server = StdioMCPServer(
         binary_path=binary_path,

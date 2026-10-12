@@ -31,7 +31,7 @@ The server uses the official public Manager API to acquire database leases, exec
 
 Discovery, authentication, events and crash recovery come from Nexus. The server records Manager lifecycle events and sends disconnect warnings through MCP logging. The six default tools have no separate subscription for IDB modification events; the official `DatabaseHandle` exposes these underneath. See [database management](DATABASE-MANAGEMENT.en.md) for idle release.
 
-Nexus 0.13.0 has an ABI issue in its macOS network filesystem probe. This project fixes the `statfs` symbol binding only in the server process on that platform and version, retaining the official network drive restriction.
+The macOS `statfs` ABI fix for older Nexus 0.13.0 environments remains limited to that version and platform in the server process. The 0.5 Nexus extra uses 0.13.4+. The official network drive restriction remains.
 
 ## stdio
 

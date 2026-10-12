@@ -1,0 +1,23 @@
+{
+  "name": "ida-mcp-stdio",
+  "version": "0.5.0",
+  "description": "Analyze local IDA databases with isolated workers. 使用隔离工作进程分析本地 IDA 数据库。",
+  "author": {"name": "lzxzl", "url": "https://github.com/lzxzl"},
+  "homepage": "https://github.com/lzxzl/ida-mcp-stdio",
+  "repository": "https://github.com/lzxzl/ida-mcp-stdio",
+  "license": "MIT",
+  "keywords": ["ida", "mcp", "reverse-engineering"],
+  "skills": "./plugin-skills/",
+  "mcpServers": "./.codex-plugin/mcp.json",
+  "hooks": "./.codex-plugin/hooks.json",
+  "interface": {
+    "displayName": "IDA MCP Stdio",
+    "shortDescription": "Analyze local IDA databases. 分析本地 IDA 数据库。",
+    "longDescription": "Native IDA 9.2+ analysis with isolated multi-database workers and optional Nexus for IDA 9.4+. Requires a configured Python installation. 原生支持 IDA 9.2+，提供隔离的多数据库工作进程，IDA 9.4+ 可选 Nexus；需要配置 Python 安装。",
+    "developerName": "lzxzl",
+    "category": "Developer Tools",
+    "capabilities": ["MCP", "Hooks"],
+    "websiteURL": "https://github.com/lzxzl/ida-mcp-stdio",
+    "defaultPrompt": ["Analyze an authorized binary in IDA. 分析已授权的二进制文件。"]
+  }
+}

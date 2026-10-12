@@ -2,6 +2,16 @@
 
 [中文](CHANGELOG.md)
 
+## 0.5.0 (unreleased)
+
+- `install` / `update --gui-plugin` deploys the official GUI provider and checks or creates an IDAPython environment. Dry runs never execute HCLI.
+- `--hooks` adds an OpenCode V1 active-session plugin and durable ZCode transcripts, preserving unrelated hooks and existing disabled settings.
+- Added Codex / Claude Code plugin packages, a shared marketplace catalog and a configurable Python launcher.
+- Added wheel / sdist version checks and a PyPI Trusted Publisher workflow. Publishing requires GitHub and PyPI setup.
+- Added `benchmark run / compare / usage` with workload/result checks and separate workflow metrics and recorded transcript usage.
+- `IDA_MCP_STDIO_STATE_DIR` selects the state directory for traces, artifacts, dashboards and transcripts.
+- Raised the Nexus dependency floor to 0.13.4 for the current official GUI plugin. Native IDA 9.2 support remains.
+
 ## 0.4.0
 
 - Complete offline Domain lookup with modules, decorators, inheritance, installed version, separate examples and full source.

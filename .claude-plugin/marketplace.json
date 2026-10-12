@@ -1,0 +1,11 @@
+{
+  "name": "ida-mcp-stdio-local",
+  "description": "Local IDA MCP integration. 本地 IDA MCP 集成。",
+  "owner": {"name": "lzxzl", "url": "https://github.com/lzxzl"},
+  "plugins": [{
+    "name": "ida-mcp-stdio",
+    "source": "./",
+    "version": "0.5.0",
+    "description": "Isolated IDA analysis with a configured Python environment. 使用指定 Python 环境与隔离进程进行 IDA 分析。"
+  }]
+}

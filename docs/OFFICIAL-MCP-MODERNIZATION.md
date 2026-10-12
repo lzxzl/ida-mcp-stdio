@@ -1,4 +1,4 @@
-# 0.3 / 0.4 迁移说明
+# 0.3 / 0.4 / 0.5 迁移说明
 
 [English](OFFICIAL-MCP-MODERNIZATION.en.md)
 
@@ -23,6 +23,14 @@
 - `dashboard` 展示多个会话及明确关联的客户端转录，token 和费用采用记录值。`logs` 导出原始记录、关联转录、结果文件和 ZIP 清单。
 - `install` 按 Codex、Claude Code / Desktop、OpenCode、ZCode 格式写配置并备份；`update` 升级 venv 后刷新配置。可选 hooks 关联 Claude Code 和支持该能力的 Codex 转录，Codex 需在 `/hooks` 审阅信任。
 - [对比示例](../examples/compare_tool_profiles.py) 测量等价 legacy / compact 分析，并统计工具发现的开销。它测量的是消息体和 token，未复现官方智能体任务基准。
+
+## 0.5 补充
+
+- `--gui-plugin` 通过官方 HCLI 部署 GUI provider，支持环境检查、显式创建 IDAPython venv 和完整命令预览。
+- `--hooks` 增加 OpenCode V1 会话插件和 ZCode 临时转录保存；Claude Desktop 仍需显式关联导出文件。
+- Codex / Claude Code marketplace 清单、Python 启动器和操作指南随源码分发。包发布工作流检查版本和资源；PyPI 上传需配置 Trusted Publisher。
+- `benchmark` 在二进制副本上重复同一查询，检查事实一致性；转录用量单独读取。实机样本已验证两版 native 的批量 / 分次结果相同，智能体 token 节省比例尚未验证。
+- 状态目录可用 `IDA_MCP_STDIO_STATE_DIR` 配置。当前官方 GUI 插件要求 Nexus 0.13.4+，新安装使用该依赖下限。
 
 ## 后端选择
 

@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+from .cli import state_directory
+
 
 class SessionStore:
     def __init__(
@@ -23,9 +25,7 @@ class SessionStore:
         if inline_limit < 16:
             raise ValueError("inline_limit must be at least 16 bytes")
         self.session_id = uuid.uuid4().hex
-        self.root = (
-            root or Path.home() / ".local" / "state" / "ida-mcp-stdio" / self.session_id
-        )
+        self.root = root or state_directory() / self.session_id
         self.inline_limit = inline_limit
         self.log_path = log_path
         self.agent = agent

@@ -2,6 +2,16 @@
 
 [English](CHANGELOG.en.md)
 
+## 0.5.0（未发布）
+
+- `install` / `update --gui-plugin` 部署官方 GUI provider，可检查或创建 IDAPython 环境；预览不执行 HCLI。
+- `--hooks` 新增 OpenCode V1 当前会话插件和 ZCode 转录保存；保留其他 hook 和已有禁用状态。
+- 新增 Codex / Claude Code 插件包、共享 marketplace 清单和可配置的 Python 启动器。
+- 新增 wheel / sdist 版本检查和 PyPI Trusted Publisher 工作流；发布需配置 GitHub 与 PyPI。
+- 新增 `benchmark run / compare / usage`，检查任务和结果一致性，并分别记录工作流指标与真实转录用量。
+- `IDA_MCP_STDIO_STATE_DIR` 可指定日志、artifact、看板和转录的状态目录。
+- Nexus 依赖下限更新为 0.13.4，匹配当前官方 GUI 插件；native 的 IDA 9.2 支持保留。
+
 ## 0.4.0
 
 - 补齐离线 Domain 查询：模块、装饰器、继承关系、版本，以及独立示例搜索和完整源码。
