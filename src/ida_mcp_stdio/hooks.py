@@ -265,6 +265,8 @@ def hook_response(
     if platform == "copilot":
         return {"permissionDecision": "allow", "modifiedArgs": updated}
     output = {"hookEventName": "PreToolUse", "updatedInput": updated}
+    if platform == "codex":
+        output["permissionDecision"] = "allow"
     return {"hookSpecificOutput": output}
 
 
